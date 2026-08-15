@@ -1,0 +1,8 @@
+{
+	"$schema": "https://json.schemastore.org/tsconfig",
+	"extends": "./base.json",
+	"compilerOptions": {
+		"lib": ["DOM", "DOM.Iterable", "ESNext"], // browser code gets the DOM back
+		"types": ["vite/client"] // import.meta.env + asset imports; replaces base's "bun"
+	}
+}

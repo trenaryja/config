@@ -1,0 +1,22 @@
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": ["config:recommended"],
+	"labels": ["dependencies"],
+	"packageRules": [
+		{
+			"description": "Group all npm updates into one PR",
+			"matchDatasources": ["npm"],
+			"groupName": "npm dependencies"
+		},
+		{
+			"description": "Group all GitHub Actions updates into one PR",
+			"matchManagers": ["github-actions"],
+			"groupName": "github actions"
+		},
+		{
+			"description": "typescript-eslint has no TS 7 support yet (typescript-eslint#10940) — the `typescript` dep stays 6.x for the linter's API while `@typescript/native` (alias) tracks 7.x for the tsc binary. Drop this rule when typescript-eslint announces TS 7 support.",
+			"matchDepNames": ["typescript"],
+			"allowedVersions": "<7"
+		}
+	]
+}

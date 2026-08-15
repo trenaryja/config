@@ -1,0 +1,66 @@
+{
+	"name": "@trenaryja/config",
+	"version": "0.0.0",
+	"description": "Shared configs: eslint, tsconfig, prettier, renovate, release-it",
+	"license": "MIT",
+	"author": "Justin Trenary",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/trenaryja/config.git"
+	},
+	"type": "module",
+	"exports": {
+		"./eslint": "./eslint.js",
+		"./prettier": "./prettier.json",
+		"./release-it": "./release-it.json",
+		"./tsconfig/base": "./tsconfig/base.json",
+		"./tsconfig/next": "./tsconfig/next.json",
+		"./tsconfig/vite": "./tsconfig/vite.json",
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"eslint.js",
+		"prettier.json",
+		"release-it.json",
+		"tsconfig"
+	],
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
+	},
+	"scripts": {
+		"fix": "prettier -w . && eslint --fix .",
+		"check": "prettier -c . && eslint .",
+		"get-latest": "bun update --latest -i",
+		"reinstall": "rm -rf node_modules && rm bun.lock && bun install",
+		"release": "release-it --"
+	},
+	"dependencies": {
+		"@fullstacksjs/eslint-config": "^15.0.1",
+		"@types/bun": "^1.3.14",
+		"@typescript/native": "npm:typescript@^7.0.2",
+		"eslint": "^10.8.1",
+		"eslint-plugin-react-hooks": "^7.1.1",
+		"local-pkg": "^1.2.1",
+		"prettier": "^3.9.6",
+		"typescript": "^6.0.3"
+	},
+	"devDependencies": {
+		"release-it": "^20.2.0"
+	},
+	"prettier": "@trenaryja/config/prettier",
+	"release-it": {
+		"git": {
+			"commitMessage": "chore(release): v${version} [skip ci]"
+		},
+		"github": {
+			"release": true
+		},
+		"npm": {
+			"publish": false
+		}
+	},
+	"trustedDependencies": [
+		"unrs-resolver"
+	]
+}

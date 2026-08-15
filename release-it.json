@@ -1,0 +1,11 @@
+{
+	"git": {
+		"commitMessage": "chore(release): v${version} [skip ci]"
+	},
+	"github": {
+		"release": true
+	},
+	"npm": {
+		"publish": false
+	}
+}

@@ -1,0 +1,9 @@
+{
+	"$schema": "https://json.schemastore.org/tsconfig",
+	"extends": "./base.json",
+	"compilerOptions": {
+		"lib": ["DOM", "DOM.Iterable", "ESNext"], // browser code gets the DOM back
+		"jsx": "preserve", // Next's compiler transforms JSX itself
+		"plugins": [{ "name": "next" }]
+	}
+}
