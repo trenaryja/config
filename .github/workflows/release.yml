@@ -1,8 +1,9 @@
 name: Release
 
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch: # re-run a publish by hand if a release-triggered run failed
+  release:
+    types: [published]
 
 permissions:
   contents: read
