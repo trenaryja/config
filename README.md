@@ -89,7 +89,7 @@ export default config
 
 ## Releasing this package
 
-`bun run release` makes the tag and the GitHub release. On tag push, `release.yml` publishes to npm with provenance. Needs the `NPM_TOKEN` repo secret.
+`bun run release` makes the tag and the GitHub release. On tag push, `release.yml` publishes to npm with provenance via [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) — no token, no secret. The trusted publisher is configured in the npm package settings: repo `trenaryja/config`, workflow `release.yml`.
 
 ## Non-goals
 
