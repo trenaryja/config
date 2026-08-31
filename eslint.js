@@ -1,75 +1,80 @@
 import { defineConfig as fullstacksjs } from '@fullstacksjs/eslint-config'
 import reactHooks from 'eslint-plugin-react-hooks'
-import { isPackageExists } from 'local-pkg'
 
-// Patch a rule's options wherever upstream set them, instead of restating them —
-// restated options go stale when upstream changes; patched ones inherit it.
+// Amend upstream's options in place — a restated array goes stale when upstream changes
 const patchRule = (configs, ruleId, patch) => {
 	for (const config of configs)
 		if (Array.isArray(config.rules?.[ruleId])) config.rules[ruleId] = patch(config.rules[ruleId])
 }
 
-// Anchored to @fullstacksjs/eslint-config v15 (auto-detects next/react/tailwind/tests).
-// Everything below is a deviation from it — keep this list short.
 export const defineConfig = ({ ignores = [], rules = {}, ...options } = {}) => {
-	const hasReact = isPackageExists('react')
-	const hasNext = isPackageExists('next')
-
 	const configs = fullstacksjs({
-		typescript: { projectService: true }, // unlock typescript-eslint's type-aware tier (no-floating-promises, …)
-		files: ['**/*.?([cm])ts', '**/*.?([cm])tsx'], // scope our rules to TS — they reference plugins only loaded there
+		// Each key is upstream's on-switch for its module, and its own detection reads false from a monorepo root.
+		// `typescript: {}` is not enough — without projectService the type-aware rules below exit 2.
+		typescript: { projectService: true },
+		react: { compilationMode: 'all' },
+		next: true,
+		files: ['**/*.?([cm])ts', '**/*.?([cm])tsx'], // unscoped, our TS-only plugin names crash ESLint on eslint.config.mjs
 		...options,
-		ignores: ['convex/_generated/**', ...ignores], // committed generated code — .gitignore can't cover it
+		ignores: ['**/*-env.d.ts', ...ignores], // regenerated on build, so a stale disable inside one is unfixable in source
 		rules: {
 			'perfectionist/sort-imports': 'off', // vscode organize-imports owns import order
-			'@typescript-eslint/consistent-type-definitions': ['error', 'type'],
+			'perfectionist/sort-union-types': 'off', // written order carries meaning
+			'regexp/sort-character-class-elements': 'off', // same
+
+			// Upstream gates its type-aware block on a tsconfigRootDir it never passes,
+			// so naming these is the only thing that turns them on.
+			'@typescript-eslint/no-floating-promises': 'error',
 			'@typescript-eslint/no-unnecessary-type-assertion': 'error',
-			'@typescript-eslint/prefer-nullish-coalescing': 'error', // `??` over `||`
+			'@typescript-eslint/prefer-nullish-coalescing': 'error',
+			'@typescript-eslint/switch-exhaustiveness-check': 'error',
 
-			...(hasReact && {
-				// fullstacksjs 15.0.1 bug: its strict() helper leaves these two always-off
-				'@eslint-react/set-state-in-effect': 'error',
-				'@eslint-react/static-components': 'error',
+			// Deliberate: bit protocols, counters, serial I/O — not smells
+			'no-bitwise': 'off',
+			'no-plusplus': 'off',
+			'no-await-in-loop': 'off',
 
-				// AST ports of the hooks rules — superseded by the real compiler rules appended below
-				'@eslint-react/rules-of-hooks': 'off',
-				'@eslint-react/exhaustive-deps': 'off',
+			// AST ports of rules the compiler plugin below reports better — one defect, one rule id
+			'@eslint-react/rules-of-hooks': 'off',
+			'@eslint-react/exhaustive-deps': 'off',
+			'@eslint-react/refs': 'off',
 
-				'@eslint-react/no-missing-context-display-name': 'off', // DevTools nicety, not worth the noise
-				'react-refresh/only-export-components': 'off', // helpers/meta colocate with components by convention
-				'jsx-a11y/alt-text': ['error', { img: ['Image'] }], // also check next/image
-			}),
+			// Not a port: the react-hooks twin misses setState in .ts hook files, and upstream leaves this off
+			'@eslint-react/set-state-in-effect': 'error',
 
-			...(hasNext && {
-				// fullstacksjs runs every next/* rule at warn; restore Vercel's error tier
-				'next/inline-script-id': 'error',
-				'next/no-assign-module-variable': 'error',
-				'next/no-document-import-in-page': 'error',
-				'next/no-duplicate-head': 'error',
-				'next/no-head-import-in-document': 'error',
-				'next/no-html-link-for-pages': 'error',
-				'next/no-script-component-in-head': 'error',
-				'next/no-sync-scripts': 'error',
-				'next/no-location-assign-relative-destination': 'warn', // in the plugin, missing from fullstacksjs's list
-			}),
+			'@eslint-react/no-missing-context-display-name': 'off', // its fixer splices into the next statement, emitting invalid TS
+			'@eslint-react/dom-no-missing-button-type': 'off', // blind to prop spreads — zag-js sets type at runtime
+			'@eslint-react/dom-no-missing-iframe-sandbox': 'off', // a usable sandbox needs allow-scripts + allow-same-origin, which is the escape
+			'react-refresh/only-export-components': 'off', // a codepen pen is one file with zero exports
+			'jsx-a11y/alt-text': ['error', { img: ['Image'] }], // also check next/image
+			'next/no-location-assign-relative-destination': 'error', // in the plugin, absent from upstream's list
+			'next/no-img-element': 'off', // `next: true` is unconditional, and a repo without Next has no next/image to move to
 
-			...rules, // per-repo overrides win last
+			// jsx-a11y counts onError/onLoad as interactions, so an <img> with a load-failure
+			// fallback is flagged with no keyboard equivalent to add. The rest is its default.
+			'jsx-a11y/no-noninteractive-element-interactions': [
+				'error',
+				{ handlers: ['onClick', 'onMouseDown', 'onMouseUp', 'onKeyPress', 'onKeyDown', 'onKeyUp'] },
+			],
+
+			...rules,
 		},
 	})
 
-	// A flat dispatch switch (reducer, keybinding table) is not spaghetti: count the
-	// whole switch as 1 (`modified`), inheriting upstream's max unchanged.
+	// `interface` on a published surface invites consumer declaration merging
+	patchRule(configs, '@typescript-eslint/consistent-type-definitions', ([severity]) => [severity, 'type'])
+
+	// A flat dispatch switch (reducer, keybinding table) is not spaghetti: count it as 1
 	patchRule(configs, 'complexity', ([severity, max]) => [severity, { max: max?.max ?? max, variant: 'modified' }])
 
-	// Upstream demands a blank line after every `case` — even between consecutive cases,
-	// which breaks empty fallthrough cases. Last matching entry wins, so append one.
+	// Upstream wants a blank line after every `case`, which breaks empty fallthrough cases
 	patchRule(configs, '@stylistic/padding-line-between-statements', (entries) => [
 		...entries,
-		{ blankLine: 'never', prev: ['case', 'default'], next: ['case', 'default'] },
+		{ blankLine: 'any', prev: ['case', 'default'], next: ['case', 'default'] },
 	])
 
-	// Official React Compiler diagnostics — the one thing fullstacksjs dropped that we keep
-	if (hasReact) configs.push(reactHooks.configs.flat['recommended-latest'])
+	// React Compiler diagnostics: fullstacksjs registers none, and disable comments name them
+	configs.push(reactHooks.configs.flat['recommended-latest'])
 
 	return configs
 }

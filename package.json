@@ -30,7 +30,7 @@
 	},
 	"scripts": {
 		"fix": "prettier -w . && eslint --fix .",
-		"check": "prettier -c . && eslint .",
+		"check": "prettier -c . && eslint . --max-warnings=0",
 		"get-latest": "bun update --latest -i",
 		"reinstall": "rm -rf node_modules && rm bun.lock && bun install",
 		"release": "release-it --"
@@ -41,7 +41,6 @@
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"eslint": "^10.8.1",
 		"eslint-plugin-react-hooks": "^7.1.1",
-		"local-pkg": "^1.2.1",
 		"prettier": "^3.9.6",
 		"typescript": "^6.0.3"
 	},
