@@ -73,6 +73,12 @@ export const defineConfig = ({ ignores = [], rules = {}, ...options } = {}) => {
 		{ blankLine: 'any', prev: ['case', 'default'], next: ['case', 'default'] },
 	])
 
+	// CLAUDE.md's `_` prefix — upstream allows it on parameters but not variables
+	patchRule(configs, '@typescript-eslint/naming-convention', ([severity, ...entries]) => [
+		severity,
+		...entries.map((entry) => (entry.selector === 'variable' ? { ...entry, leadingUnderscore: 'allow' } : entry)),
+	])
+
 	// React Compiler diagnostics: fullstacksjs registers none, and disable comments name them
 	configs.push(reactHooks.configs.flat['recommended-latest'])
 
