@@ -1,5 +1,6 @@
 import { defineConfig as fullstacksjs } from '@fullstacksjs/eslint-config'
 import reactHooks from 'eslint-plugin-react-hooks'
+import { existsSync } from 'node:fs'
 
 // Amend upstream's options in place — a restated array goes stale when upstream changes
 const patchRule = (configs, ruleId, patch) => {
@@ -48,7 +49,6 @@ export const defineConfig = ({ ignores = [], rules = {}, ...options } = {}) => {
 			'react-refresh/only-export-components': 'off', // a codepen pen is one file with zero exports
 			'jsx-a11y/alt-text': ['error', { img: ['Image'] }], // also check next/image
 			'next/no-location-assign-relative-destination': 'error', // in the plugin, absent from upstream's list
-			'next/no-img-element': 'off', // `next: true` is unconditional, and a repo without Next has no next/image to move to
 
 			// jsx-a11y counts onError/onLoad as interactions, so an <img> with a load-failure
 			// fallback is flagged with no keyboard equivalent to add. The rest is its default.
@@ -78,6 +78,18 @@ export const defineConfig = ({ ignores = [], rules = {}, ...options } = {}) => {
 		severity,
 		...entries.map((entry) => (entry.selector === 'variable' ? { ...entry, leadingUnderscore: 'allow' } : entry)),
 	])
+
+	// Upstream's next config is unscoped, so an entry in `rules` above would only reach .ts/.tsx
+	const nextOverrides = {
+		// its getRootDirs reads cwd only, so create() warns to raw stderr from every repo whose root has no route dir
+		'next/no-html-link-for-pages': ['pages', 'src/pages', 'app', 'src/app'].some((dir) => existsSync(dir))
+			? 'error'
+			: 'off',
+		'next/no-img-element': 'off', // `next: true` is unconditional, and a repo without Next has no next/image to move to
+	}
+	for (const config of configs)
+		for (const [ruleId, severity] of Object.entries(nextOverrides))
+			if (config.rules?.[ruleId]) config.rules[ruleId] = severity
 
 	// React Compiler diagnostics: fullstacksjs registers none, and disable comments name them
 	configs.push(reactHooks.configs.flat['recommended-latest'])
