@@ -1,6 +1,6 @@
 {
 	"name": "@trenaryja/config",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"description": "Shared configs: eslint, tsconfig, prettier, renovate, release-it",
 	"license": "MIT",
 	"author": "Justin Trenary",
