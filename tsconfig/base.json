@@ -7,7 +7,7 @@
 		"target": "ESNext",
 		"module": "Preserve", // the bundler/runtime owns modules; tsc emits nothing anyway
 		"moduleDetection": "force", // every file is a module — no global-script identifier collisions
-		"jsx": "react-jsx", // inert without .tsx; next overrides to "preserve"
+		"jsx": "react-jsx", // inert without .tsx
 		"allowJs": true,
 		"types": ["bun"],
 
