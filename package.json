@@ -16,15 +16,13 @@
 		"./tsconfig/base": "./tsconfig/base.json",
 		"./tsconfig/next": "./tsconfig/next.json",
 		"./tsconfig/vite": "./tsconfig/vite.json",
-		"./typescript": "./typescript.js",
 		"./package.json": "./package.json"
 	},
 	"files": [
 		"eslint.js",
 		"prettier.json",
 		"release-it.json",
-		"tsconfig",
-		"typescript.js"
+		"tsconfig"
 	],
 	"publishConfig": {
 		"access": "public",
@@ -35,7 +33,7 @@
 		"check": "prettier -c . && eslint . --max-warnings=0",
 		"get-latest": "bun update --latest -i",
 		"reinstall": "rm -rf node_modules && rm bun.lock && bun install",
-		"release": "release-it --"
+		"release": "release-it"
 	},
 	"dependencies": {
 		"@fullstacksjs/eslint-config": "^15.0.1",
