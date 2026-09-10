@@ -16,13 +16,15 @@
 		"./tsconfig/base": "./tsconfig/base.json",
 		"./tsconfig/next": "./tsconfig/next.json",
 		"./tsconfig/vite": "./tsconfig/vite.json",
+		"./typescript": "./typescript.js",
 		"./package.json": "./package.json"
 	},
 	"files": [
 		"eslint.js",
 		"prettier.json",
 		"release-it.json",
-		"tsconfig"
+		"tsconfig",
+		"typescript.js"
 	],
 	"publishConfig": {
 		"access": "public",

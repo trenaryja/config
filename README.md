@@ -21,6 +21,7 @@ typescript-eslint does not run on TS 7 — TS 7.0 has no JS API ([typescript-esl
 
 - `typescript` (6.x) — the API for typescript-eslint and editors. A Renovate rule in `default.json` holds it below 7. Do not accept a 7.x bump from `get-latest`.
 - `@typescript/native` (alias of `typescript@7`) — owns the `tsc` bin. Typechecks and `next build` run the native Go compiler.
+- `@trenaryja/config/typescript` — re-exports `typescript` (6.x) so a consumer that needs the classic Compiler API (`createProgram`, `ScriptTarget`, …) reaches it without declaring `typescript` itself.
 
 Not used: the official `@typescript/typescript6` wrapper. Bun resolves its internal `npm:typescript` alias back to the wrapper itself — circular, empty module.
 
