@@ -33,7 +33,8 @@
 		"check": "prettier -c . && eslint . --max-warnings=0",
 		"get-latest": "bun update --latest -i",
 		"reinstall": "rm -rf node_modules && rm bun.lock && bun install",
-		"release": "release-it"
+		"release": "release-it",
+		"verify": "bun verify.ts"
 	},
 	"dependencies": {
 		"@fullstacksjs/eslint-config": "^15.0.1",
