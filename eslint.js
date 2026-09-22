@@ -127,7 +127,13 @@ export const defineConfig = ({ ignores = [], rules = {}, ...options } = {}) => {
 	configs.push(
 		...tailwindEntries.map((entryPoint) => ({
 			files: [sourceOf(entryPoint)],
-			settings: { 'better-tailwindcss': { entryPoint } },
+			settings: {
+				'better-tailwindcss': {
+					entryPoint,
+					// plugin defaults minus `^styles?$`: a `style` variable here holds CSS declarations, not classes
+					variables: ['^classNames?$', '^classes$'],
+				},
+			},
 		})),
 	)
 
