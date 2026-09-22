@@ -97,6 +97,9 @@ export const defineConfig = ({ ignores = [], rules = {}, ...options } = {}) => {
 		for (const [ruleId, severity] of Object.entries(nextOverrides))
 			if (config.rules?.[ruleId]) config.rules[ruleId] = severity
 
+	// Upstream's react block covers JS, where no type info exists: this typed rule crashed the run on the first `&&`
+	configs.push({ files: ['**/*.?([cm])js?(x)'], rules: { '@eslint-react/no-leaked-conditional-rendering': 'off' } })
+
 	// React Compiler diagnostics: fullstacksjs registers none, and disable comments name them
 	configs.push(reactHooks.configs.flat['recommended-latest'])
 
