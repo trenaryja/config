@@ -27,12 +27,12 @@
 		"provenance": true
 	},
 	"scripts": {
+		"dev": "bun fleet --serve",
 		"fix": "prettier -w . && eslint --fix .",
 		"check": "prettier -c . && eslint . --max-warnings=0",
 		"get-latest": "bun update --latest -i",
 		"reinstall": "rm -rf node_modules && rm bun.lock && bun install",
-		"release": "release-it",
-		"verify": "bun verify.ts"
+		"release": "release-it"
 	},
 	"dependencies": {
 		"@fullstacksjs/eslint-config": "^15.0.1",
@@ -44,7 +44,8 @@
 		"typescript": "^6.0.3"
 	},
 	"devDependencies": {
-		"release-it": "^20.2.0"
+		"release-it": "^20.2.0",
+		"remeda": "^2.50.0"
 	},
 	"prettier": "@trenaryja/config/prettier",
 	"release-it": {

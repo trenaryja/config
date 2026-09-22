@@ -15,6 +15,7 @@
       },
       "devDependencies": {
         "release-it": "^20.2.0",
+        "remeda": "^2.50.0",
       },
     },
   },
@@ -1103,6 +1104,8 @@
     "regexp.prototype.flags": ["regexp.prototype.flags@1.5.4", "", { "dependencies": { "call-bind": "^1.0.8", "define-properties": "^1.2.1", "es-errors": "^1.3.0", "get-proto": "^1.0.1", "gopd": "^1.2.0", "set-function-name": "^2.0.2" } }, "sha512-dYqgNSZbDwkaJ2ceRd9ojCGjBq+mOm9LmtXnAnEGyHhN/5R7iDW2TRw3h+o/jCFxus3P2LfWIIiwowAjANm7IA=="],
 
     "release-it": ["release-it@20.2.1", "", { "dependencies": { "@inquirer/prompts": "8.4.2", "@octokit/rest": "22.0.1", "@phun-ky/typeof": "2.0.3", "async-retry": "1.3.3", "c12": "3.3.3", "ci-info": "^4.4.0", "defu": "^6.1.7", "eta": "4.5.1", "git-url-parse": "16.1.0", "issue-parser": "7.0.1", "lodash.merge": "4.6.2", "mime-types": "3.0.2", "new-github-release-url": "2.0.0", "open": "11.0.0", "ora": "9.3.0", "os-name": "7.0.0", "proxy-agent": "7.0.0", "semver": "7.7.4", "tinyglobby": "0.2.15", "undici": "7.28.0", "url-join": "5.0.0", "wildcard-match": "5.1.4", "yargs-parser": "22.0.0" }, "bin": { "release-it": "bin/release-it.js" } }, "sha512-xd0mqTGduwQlEzVBKOJcoVZxDrRLzjmFv3W8tWwkPIPDYtwYBWYjULiSk6VhfuGKocfz7GmptAqViKMQV4Zzbw=="],
+
+    "remeda": ["remeda@2.50.0", "", {}, "sha512-pzljnP7Gnl/lLz5WcOSkxEGCjcK4dteQihQjRrtKCGqn8J6jD0BHwfU6pRrXjvQV2EWe+HdgtfZW7rDdmKn8uQ=="],
 
     "resolve-pkg-maps": ["resolve-pkg-maps@1.0.0", "", {}, "sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw=="],
 
