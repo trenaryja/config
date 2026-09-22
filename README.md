@@ -1,6 +1,6 @@
 # @trenaryja/config
 
-One package for the shared configs: `eslint`, `tsconfig`, `prettier`, `renovate`, `release-it`. Each config is a thin layer on a well-kept upstream. Each deviation has an inline comment that says why.
+One package for the shared configs. Each config is a thin layer on a well-kept upstream. Each deviation has an inline comment that says why.
 
 ## Toolchain
 
@@ -13,6 +13,8 @@ This package owns the shared tools as regular dependencies. Bun hoists them into
 
 The rule: if this package configures a tool, this package owns the tool.
 
+A workspace repo needs `linker = "hoisted"` under `[install]` in its root `bunfig.toml` — Bun's isolated linker, the monorepo default, hoists nothing.
+
 Not included: `react` + `@types/react`. Their majors move together, so each repo keeps both.
 
 ### TypeScript 6 and 7, side by side
@@ -20,7 +22,7 @@ Not included: `react` + `@types/react`. Their majors move together, so each repo
 typescript-eslint does not run on TS 7 — TS 7.0 has no JS API ([typescript-eslint#10940](https://github.com/typescript-eslint/typescript-eslint/issues/10940)). Until support lands, this package installs both ([Microsoft's pattern](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/)):
 
 - `typescript` (6.x) — the API for typescript-eslint and editors. A Renovate rule in `default.json` holds it below 7. Do not accept a 7.x bump from `get-latest`.
-- `@typescript/native` (alias of `typescript@7`) — owns the `tsc` bin. Typechecks and `next build` run the native Go compiler.
+- `@typescript/native` (alias of `typescript@7`) — owns the `tsc` bin. Typechecks run the native Go compiler — except `next build`, which runs the bin of whatever `typescript` resolves to, so 6.x.
 
 Not used: the official `@typescript/typescript6` wrapper. Bun resolves its internal `npm:typescript` alias back to the wrapper itself — circular, empty module.
 
@@ -33,11 +35,12 @@ Exit plan, when typescript-eslint announces TS 7 support:
 
 ## eslint
 
-Base: [@fullstacksjs/eslint-config](https://github.com/fullstacksjs/eslint-config) — finds `next`, `react`, `tailwind`, and test frameworks by itself. This layer adds:
+Base: [@fullstacksjs/eslint-config](https://github.com/fullstacksjs/eslint-config) — detects test frameworks and storybook by itself. This layer adds:
 
+- `typescript`, `react` and `next` always on — upstream's detection reads false from a monorepo root
 - the official React Compiler diagnostics (`eslint-plugin-react-hooks`)
 - Vercel's `next/*` error severities
-- some universal overrides to taste
+- upstream's Tailwind class lint, minus class order, wherever a CSS file does `@import 'tailwindcss'` — each against its own package's CSS
 
 `eslint.config.mjs`:
 
@@ -45,16 +48,16 @@ Base: [@fullstacksjs/eslint-config](https://github.com/fullstacksjs/eslint-confi
 import { defineConfig } from '@trenaryja/config/eslint'
 
 export default defineConfig()
-// or with per-repo extras:
-export default defineConfig({ ignores: ['generated/**'], rules: { 'no-bitwise': 'off' } })
+// or with per-repo extras: defineConfig({ ignores: ['generated/**'], rules: { 'no-bitwise': 'off' } })
 ```
 
 ## tsconfig
 
-Base: the `bun init` defaults.
-
-- `base` — Bun CLIs and internal packages
-- `next` / `vite` — apps; adds DOM and framework needs
+- `base` — Bun CLIs and internal packages; keeps build output (`dist`, `target`) out of `tsc`
+- `workspace` — monorepo roots; `base` that also leaves `apps` and `packages` to their own tsconfig
+- `node` — code hosted by Node (VS Code, Raycast); swaps Bun's globals for Node's
+- `dom` — adds the DOM; for browser code that isn't a framework app
+- `next` / `vite` — apps; `dom` plus framework needs; vite also maps `@/*` to `src/`, falling back to the root
 
 `tsconfig.json`:
 
@@ -89,12 +92,4 @@ export default config
 
 ## Releasing this package
 
-`bun run release` makes the tag and the GitHub release. On tag push, `release.yml` publishes to npm with provenance via [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) — no token, no secret. The trusted publisher is configured in the npm package settings: repo `trenaryja/config`, workflow `release.yml`.
-
-## Non-goals
-
-- Runtime code (TanStack helpers etc.)
-- `.editorconfig`
-- `.vscode` — no extends mechanism
-- Biome — sticking with ESLint for now
-- `turbo.json` / `bunfig.toml` / `.gitignore` — no cross-repo reference mechanism
+Before releasing, `bun fleet verify scan` then `bun fleet verify report` lint every sibling repo that consumes this package against the working `eslint.js`. `bun run release` makes the tag and the GitHub release. Publishing that release triggers `release.yml`, which publishes to npm with provenance via [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) — no token, no secret. The trusted publisher is configured in the npm package settings: repo `trenaryja/config`, workflow `release.yml`.
