@@ -17,7 +17,12 @@ export const defineConfig = ({ ignores = [], rules = {}, ...options } = {}) => {
 		next: true,
 		files: ['**/*.?([cm])ts', '**/*.?([cm])tsx'], // unscoped, our TS-only plugin names crash ESLint on eslint.config.mjs
 		...options,
-		ignores: ['**/*-env.d.ts', ...ignores], // regenerated on build, so a stale disable inside one is unfixable in source
+		ignores: [
+			'**/*-env.d.ts', // regenerated on build, so a stale disable inside one is unfixable in source
+			'**/target/', // Cargo output; cmake litters it with `compiler_depend.ts` stubs that are not TypeScript
+			'**/_generated/', // codegen (Convex) rewritten on every dev run
+			...ignores,
+		],
 		rules: {
 			'perfectionist/sort-imports': 'off', // vscode organize-imports owns import order
 			'perfectionist/sort-union-types': 'off', // written order carries meaning
@@ -43,6 +48,7 @@ export const defineConfig = ({ ignores = [], rules = {}, ...options } = {}) => {
 			// Not a port: the react-hooks twin misses setState in .ts hook files, and upstream leaves this off
 			'@eslint-react/set-state-in-effect': 'error',
 
+			'@typescript-eslint/strict-void-return': 'off', // demands `void` or braces on every `() => fn()` handler whose return nothing reads
 			'@eslint-react/no-missing-context-display-name': 'off', // its fixer splices into the next statement, emitting invalid TS
 			'@eslint-react/dom-no-missing-button-type': 'off', // blind to prop spreads — zag-js sets type at runtime
 			'@eslint-react/dom-no-missing-iframe-sandbox': 'off', // a usable sandbox needs allow-scripts + allow-same-origin, which is the escape
