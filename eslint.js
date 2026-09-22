@@ -1,12 +1,26 @@
 import { defineConfig as fullstacksjs } from '@fullstacksjs/eslint-config'
 import reactHooks from 'eslint-plugin-react-hooks'
-import { existsSync } from 'node:fs'
+import { existsSync, globSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 // Amend upstream's options in place — a restated array goes stale when upstream changes
 const patchRule = (configs, ruleId, patch) => {
 	for (const config of configs)
 		if (Array.isArray(config.rules?.[ruleId])) config.rules[ruleId] = patch(config.rules[ruleId])
 }
+
+/** Tailwind v4 has no config file: the CSS importing it is the entry point */
+const tailwindEntries = globSync('**/*.css', {
+	exclude: ['**/node_modules/**', '**/target/**'], // Cargo output: 25ms of walk in extensions, 2ms without
+}).filter((path) => /@import\s+["']tailwindcss/.test(readFileSync(path, 'utf8')))
+
+const packageDir = (path) => {
+	const dir = dirname(path)
+	return dir === '.' || existsSync(`${dir}/package.json`) ? dir : packageDir(dir)
+}
+
+/** an entry lints only its own package, so each app in a monorepo reads its own CSS */
+const sourceOf = (entry) => join(packageDir(entry), '**/*.?([cm])[jt]s?(x)')
 
 export const defineConfig = ({ ignores = [], rules = {}, ...options } = {}) => {
 	const configs = fullstacksjs({
@@ -15,6 +29,18 @@ export const defineConfig = ({ ignores = [], rules = {}, ...options } = {}) => {
 		typescript: { projectService: true },
 		react: { compilationMode: 'all' },
 		next: true,
+		...(tailwindEntries.length > 0 && {
+			tailwind: {
+				overrides: {
+					files: tailwindEntries.map(sourceOf),
+					rules: {
+						'better-tailwindcss/enforce-consistent-class-order': 'off', // formatting, not a defect
+						// collapse rewrote `relative overflow-hidden` into ui's own `has-timeout-bar` @utility
+						'better-tailwindcss/enforce-canonical-classes': ['warn', { collapse: false }],
+					},
+				},
+			},
+		}),
 		files: ['**/*.?([cm])ts', '**/*.?([cm])tsx'], // unscoped, our TS-only plugin names crash ESLint on eslint.config.mjs
 		...options,
 		ignores: [
@@ -96,6 +122,14 @@ export const defineConfig = ({ ignores = [], rules = {}, ...options } = {}) => {
 	for (const config of configs)
 		for (const [ruleId, severity] of Object.entries(nextOverrides))
 			if (config.rules?.[ruleId]) config.rules[ruleId] = severity
+
+	// Upstream takes one entryPoint; settings merge per file, so each package gets its own
+	configs.push(
+		...tailwindEntries.map((entryPoint) => ({
+			files: [sourceOf(entryPoint)],
+			settings: { 'better-tailwindcss': { entryPoint } },
+		})),
+	)
 
 	// Upstream's react block covers JS, where no type info exists: this typed rule crashed the run on the first `&&`
 	configs.push({ files: ['**/*.?([cm])js?(x)'], rules: { '@eslint-react/no-leaked-conditional-rendering': 'off' } })
