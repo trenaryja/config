@@ -1,0 +1,10 @@
+{
+	"$schema": "https://json.schemastore.org/tsconfig",
+	"extends": "./base.json",
+	"exclude": [
+		"${configDir}/**/dist", // restated: a child's exclude replaces base's
+		"${configDir}/**/target",
+		"${configDir}/apps", // workspace members own their tsconfig
+		"${configDir}/packages"
+	]
+}

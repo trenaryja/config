@@ -1,8 +1,8 @@
 {
 	"$schema": "https://json.schemastore.org/tsconfig",
-	"extends": "./base.json",
+	"extends": "./dom.json",
 	"compilerOptions": {
-		"lib": ["DOM", "DOM.Iterable", "ESNext"], // browser code gets the DOM back
 		"plugins": [{ "name": "next" }]
-	}
+	},
+	"include": ["${configDir}/**/*", "${configDir}/.next/types/**/*.ts", "${configDir}/.next/dev/types/**/*.ts"] // `**/*` skips dot-dirs
 }

@@ -13,9 +13,7 @@
 		"./eslint": "./eslint.js",
 		"./prettier": "./prettier.json",
 		"./release-it": "./release-it.json",
-		"./tsconfig/base": "./tsconfig/base.json",
-		"./tsconfig/next": "./tsconfig/next.json",
-		"./tsconfig/vite": "./tsconfig/vite.json",
+		"./tsconfig/*": "./tsconfig/*.json",
 		"./package.json": "./package.json"
 	},
 	"files": [

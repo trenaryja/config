@@ -3,7 +3,7 @@
 	// Anchored to `bun init` defaults. Omitted options are implied by `module: "Preserve"`
 	// (moduleResolution: bundler, esModuleInterop) or are already TS defaults.
 	"compilerOptions": {
-		"lib": ["ESNext"], // no DOM globals in base — next/vite add them back
+		"lib": ["ESNext"], // no DOM globals in base — dom adds them back
 		"target": "ESNext",
 		"module": "Preserve", // the bundler/runtime owns modules; tsc emits nothing anyway
 		"moduleDetection": "force", // every file is a module — no global-script identifier collisions
@@ -22,5 +22,6 @@
 		"noImplicitOverride": true,
 
 		"resolveJsonModule": true // deviation from bun init: repos import JSON; tsc needs this to type it
-	}
+	},
+	"exclude": ["${configDir}/**/dist", "${configDir}/**/target"] // allowJs would typecheck built bundles
 }
