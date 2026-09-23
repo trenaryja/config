@@ -29,7 +29,7 @@
 	"scripts": {
 		"dev": "bun fleet --serve",
 		"fix": "prettier -w . && eslint --fix .",
-		"check": "prettier -c . && eslint . --max-warnings=0",
+		"check": "tsc && prettier -c . && eslint . --max-warnings=0",
 		"get-latest": "bun update --latest -i",
 		"reinstall": "rm -rf node_modules && rm bun.lock && bun install",
 		"release": "release-it"
