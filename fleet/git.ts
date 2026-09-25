@@ -1,7 +1,6 @@
 import { existsSync, statSync } from 'node:fs'
-import { readdir } from 'node:fs/promises'
 import * as R from 'remeda'
-import { GIT } from './discover.ts'
+import { findRepos, GIT } from './discover.ts'
 
 const run = async (repo: string, ...args: string[]) => {
 	const proc = Bun.spawn(['git', '-C', `${GIT}/${repo}`, ...args], { stdout: 'pipe', stderr: 'ignore' })
@@ -98,14 +97,7 @@ const readRepo = async (repo: string) => {
 export type RepoGit = Awaited<ReturnType<typeof readRepo>>
 
 /** every repo under ~/Git, not just config's consumers: `config` and `nas` carry commits too */
-export const gitAudit = async () => {
-	const entries = await readdir(GIT, { withFileTypes: true })
-	const repos = entries
-		.filter((entry) => entry.isDirectory() && existsSync(`${GIT}/${entry.name}/.git`))
-		.map((entry) => entry.name)
-		.sort()
-	return Promise.all(repos.map(readRepo))
-}
+export const gitAudit = async () => Promise.all((await findRepos()).map(readRepo))
 
 /**
  * The trunk alone, ordered worst first. Branches stay out of it: a local-only `wip/*` or proposal

@@ -1,3 +1,4 @@
+import { statSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { basename, dirname } from 'node:path'
 
@@ -14,18 +15,27 @@ export const manifests = async (repo: string) =>
 		.flat()
 		.filter((path) => !path.includes('node_modules'))
 
+/** a linked worktree's `.git` is a file: it repeats its repo's findings on a branch, and the git tab lists it under that repo */
+export const findRepos = async () =>
+	(await readdir(GIT, { withFileTypes: true }))
+		.filter(
+			(entry) => entry.isDirectory() && statSync(`${GIT}/${entry.name}/.git`, { throwIfNoEntry: false })?.isDirectory(),
+		)
+		.map((entry) => entry.name)
+		.sort()
+
 export const findConsumers = async () => {
-	const entries = await readdir(GIT, { withFileTypes: true })
-	const roots = entries.filter((entry) => entry.isDirectory() && entry.name !== SELF).map((entry) => entry.name)
 	const found = await Promise.all(
-		roots.map(async (name) => {
-			const uses = await Promise.all(
-				(await manifests(name)).map(async (path) =>
-					(await Bun.file(`${GIT}/${name}/${path}`).text()).includes('@trenaryja/config'),
-				),
-			)
-			return uses.some(Boolean) ? name : null
-		}),
+		(await findRepos())
+			.filter((name) => name !== SELF)
+			.map(async (name) => {
+				const uses = await Promise.all(
+					(await manifests(name)).map(async (path) =>
+						(await Bun.file(`${GIT}/${name}/${path}`).text()).includes('@trenaryja/config'),
+					),
+				)
+				return uses.some(Boolean) ? name : null
+			}),
 	)
 	return found.filter((name) => name !== null)
 }
