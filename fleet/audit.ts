@@ -87,10 +87,13 @@ const auditEslint = (raw: string) =>
 	})
 
 /** extra steps (cargo, tests, codegen) are welcome; a missing core step is drift */
-const CORE_STEPS = {
-	fix: ['prettier -w .', 'eslint --fix .'],
-	check: ['tsc', 'prettier -c .', 'eslint . --max-warnings=0'],
-} as const
+const coreSteps = (skip = { prettier: '', eslint: '' }) => ({
+	fix: [`prettier -w .${skip.prettier}`, `eslint --fix .${skip.eslint}`],
+	check: ['tsc', `prettier -c .${skip.prettier}`, `eslint . --max-warnings=0${skip.eslint}`],
+})
+
+/** members own their lint, so turbo can filter and cache it per package; a root that also covered them ran it twice */
+const ROOT_SKIP = { prettier: ` '!apps' '!packages'`, eslint: ' --ignore-pattern apps --ignore-pattern packages' }
 
 const CANONICAL_SCRIPTS = {
 	'get-latest': 'bun update --latest --interactive',
@@ -104,8 +107,8 @@ const expand = (body: string, scripts: Record<string, string>, seen: ReadonlySet
 		return target === undefined || seen.has(name) ? call : expand(target, scripts, new Set([...seen, name]))
 	})
 
-const auditScripts = (scripts: Record<string, string> = {}) => [
-	...R.entries(CORE_STEPS).flatMap(([name, steps]) => {
+const auditScripts = (role: Row['role'], scripts: Record<string, string> = {}) => [
+	...R.entries(coreSteps(role === 'workspace' ? ROOT_SKIP : undefined)).flatMap(([name, steps]) => {
 		const script = scripts[name]
 		if (script === undefined) return [`scripts.${name}: missing`]
 		const body = expand(script, scripts)
@@ -139,7 +142,7 @@ const auditPackage = (manifest: Manifest, role: Row['role'], files: { tsconfig?:
 		...(role === 'member' || manifest.prettier === `${self.name}/prettier`
 			? []
 			: [`prettier: ${show(manifest.prettier)}`]),
-		...(files.tsconfig === undefined ? [] : auditScripts(manifest.scripts)),
+		...(files.tsconfig === undefined ? [] : auditScripts(role, manifest.scripts)),
 	]
 }
 
