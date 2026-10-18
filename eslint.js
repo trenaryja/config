@@ -1,147 +1,198 @@
-import { defineConfig as fullstacksjs } from '@fullstacksjs/eslint-config'
+import { includeIgnoreFile } from '@eslint/compat'
+import js from '@eslint/js'
+import next from '@next/eslint-plugin-next'
+import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescript'
+import { flatConfigs as importX } from 'eslint-plugin-import-x'
+import a11y from 'eslint-plugin-jsx-a11y-x'
 import reactHooks from 'eslint-plugin-react-hooks'
-import { existsSync, globSync, readFileSync } from 'node:fs'
+import globals from 'globals'
+import { getBunBuiltinModules } from 'is-bun-module'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import ts from 'typescript'
+import tseslint from 'typescript-eslint'
 
-// Amend upstream's options in place — a restated array goes stale when upstream changes
-const patchRule = (configs, ruleId, patch) => {
-	for (const config of configs)
-		if (Array.isArray(config.rules?.[ruleId])) config.rules[ruleId] = patch(config.rules[ruleId])
+const TS = ['**/*.?([cm])ts', '**/*.?([cm])tsx']
+
+/**
+ * a monorepo member linting itself reads its repo's .gitignore, not a missing `./.gitignore`
+ * @param {string} dir
+ * @returns {string | undefined}
+ */
+const gitignoreFrom = (dir) => {
+	if (existsSync(join(dir, '.gitignore'))) return join(dir, '.gitignore')
+	if (existsSync(join(dir, '.git')) || dir === dirname(dir)) return undefined
+	return gitignoreFrom(dirname(dir))
 }
 
-/** Tailwind v4 has no config file: the CSS importing it is the entry point */
-const tailwindEntries = globSync('**/*.css', {
-	exclude: ['**/node_modules/**', '**/target/**'], // Cargo output: 25ms of walk in extensions, 2ms without
-}).filter((path) => /@import\s+["']tailwindcss/.test(readFileSync(path, 'utf8')))
-
-const packageDir = (path) => {
-	const dir = dirname(path)
-	return dir === '.' || existsSync(`${dir}/package.json`) ? dir : packageDir(dir)
+/** classic runtime (`jsx: react`) reads `React`; under react-jsx an `import React` is unused, yet by default any JSX counts as using it */
+const jsxPragma = () => {
+	const path = ts.findConfigFile(process.cwd(), ts.sys.fileExists)
+	if (!path) return null
+	const options = ts.parseJsonConfigFileContent(
+		ts.readConfigFile(path, ts.sys.readFile).config,
+		ts.sys,
+		dirname(path),
+	).options
+	return options.jsx === ts.JsxEmit.React ? 'React' : null
 }
 
-/** an entry lints only its own package, so each app in a monorepo reads its own CSS */
-const sourceOf = (entry) => join(packageDir(entry), '**/*.?([cm])[jt]s?(x)')
+/** @param {readonly string[]} ids */
+const errors = (ids, prefix = '') => Object.fromEntries(ids.map((id) => [`${prefix}${id}`, 'error']))
 
-export const defineConfig = ({ ignores = [], rules = {}, ...options } = {}) => {
-	const configs = fullstacksjs({
-		// Each key is upstream's on-switch for its module, and its own detection reads false from a monorepo root.
-		// `typescript: {}` is not enough — without projectService the type-aware rules below exit 2.
-		typescript: { projectService: true },
-		react: { compilationMode: 'all' },
-		next: true,
-		...(tailwindEntries.length > 0 && {
-			tailwind: {
-				overrides: {
-					files: tailwindEntries.map(sourceOf),
-					rules: {
-						'better-tailwindcss/enforce-consistent-class-order': 'off', // formatting, not a defect
-						// collapse rewrote `relative overflow-hidden` into ui's own `has-timeout-bar` @utility
-						'better-tailwindcss/enforce-canonical-classes': ['warn', { collapse: false }],
-					},
-				},
-			},
-		}),
-		files: ['**/*.?([cm])ts', '**/*.?([cm])tsx'], // unscoped, our TS-only plugin names crash ESLint on eslint.config.mjs
-		...options,
-		ignores: [
-			'**/*-env.d.ts', // regenerated on build, so a stale disable inside one is unfixable in source
-			'**/target/', // Cargo output; cmake litters it with `compiler_depend.ts` stubs that are not TypeScript
-			'**/_generated/', // codegen (Convex) rewritten on every dev run
-			...ignores,
-		],
-		rules: {
-			'perfectionist/sort-imports': 'off', // vscode organize-imports owns import order
-			'perfectionist/sort-union-types': 'off', // written order carries meaning
-			'regexp/sort-character-class-elements': 'off', // same
+/** type-aware: misuse of typed values that tsc lets through */
+const typeSafety = [
+	...['no-unsafe-assignment', 'no-unsafe-member-access', 'no-unsafe-call', 'no-unsafe-argument', 'no-unsafe-return'],
+	...['no-floating-promises', 'no-misused-promises', 'await-thenable', 'require-await', 'no-unnecessary-condition'],
+	...['no-unnecessary-type-assertion', 'no-base-to-string', 'switch-exhaustiveness-check', 'unbound-method'],
+]
 
-			// Upstream gates its type-aware block on a tsconfigRootDir it never passes,
-			// so naming these is the only thing that turns them on.
-			'@typescript-eslint/no-floating-promises': 'error',
-			'@typescript-eslint/no-unnecessary-type-assertion': 'error',
-			'@typescript-eslint/prefer-nullish-coalescing': 'error',
-			'@typescript-eslint/switch-exhaustiveness-check': 'error',
+const typeScript = [
+	...['adjacent-overload-signatures', 'array-type', 'no-array-constructor', 'no-confusing-non-null-assertion'],
+	...['no-duplicate-enum-values', 'no-dynamic-delete', 'no-extra-non-null-assertion'],
+	...['no-invalid-void-type', 'no-misused-new', 'no-namespace', 'no-non-null-asserted-nullish-coalescing'],
+	...['no-non-null-asserted-optional-chain', 'no-require-imports', 'no-this-alias', 'no-useless-constructor'],
+	...['no-wrapper-object-types', 'prefer-namespace-keyword', 'triple-slash-reference', 'unified-signatures'],
+	...['no-explicit-any', 'no-non-null-assertion', 'no-shadow', 'default-param-last'],
+	...['consistent-indexed-object-style', 'no-import-type-side-effects', 'no-unnecessary-type-constraint'],
+	...['no-unsafe-declaration-merging', 'no-useless-empty-export'],
+	...['prefer-as-const', 'prefer-for-of', 'prefer-function-type', 'no-empty-function'],
+]
 
-			// Deliberate: bit protocols, counters, serial I/O — not smells
-			'no-bitwise': 'off',
-			'no-plusplus': 'off',
-			'no-await-in-loop': 'off',
+const core = [
+	...['no-param-reassign', 'no-else-return', 'no-lonely-if', 'no-unneeded-ternary', 'prefer-template', 'func-names'],
+	...['array-callback-return', 'no-unmodified-loop-condition', 'no-unreachable-loop', 'no-loop-func'],
+	...['no-promise-executor-return', 'no-self-compare', 'no-constructor-return'],
+	...['no-implicit-globals', 'guard-for-in', 'radix', 'no-sequences', 'no-return-assign'],
+	...['no-useless-call', 'no-useless-computed-key', 'no-useless-rename', 'no-useless-return', 'no-useless-concat'],
+]
 
-			// AST ports of rules the compiler plugin below reports better — one defect, one rule id
-			'@eslint-react/rules-of-hooks': 'off',
-			'@eslint-react/exhaustive-deps': 'off',
-			'@eslint-react/refs': 'off',
+const imports = ['no-cycle', 'no-extraneous-dependencies', 'no-mutable-exports', 'no-self-import']
 
-			// Not a port: the react-hooks twin misses setState in .ts hook files, and upstream leaves this off
-			'@eslint-react/set-state-in-effect': 'error',
+/** tsc already reports these, and they re-parse every imported module */
+const coveredByTsc = ['no-unresolved', 'named', 'namespace', 'default', 'no-named-as-default-member']
 
-			'@typescript-eslint/strict-void-return': 'off', // demands `void` or braces on every `() => fn()` handler whose return nothing reads
-			'@eslint-react/no-missing-context-display-name': 'off', // its fixer splices into the next statement, emitting invalid TS
-			'@eslint-react/dom-no-missing-button-type': 'off', // blind to prop spreads — zag-js sets type at runtime
-			'@eslint-react/dom-no-missing-iframe-sandbox': 'off', // a usable sandbox needs allow-scripts + allow-same-origin, which is the escape
-			'react-refresh/only-export-components': 'off', // a codepen pen is one file with zero exports
-			'jsx-a11y/alt-text': ['error', { img: ['Image'] }], // also check next/image
-			'next/no-location-assign-relative-destination': 'error', // in the plugin, absent from upstream's list
+const notUnderscores = { regex: '^_+$', match: false }
+const underscoreOk = { filter: notUnderscores, leadingUnderscore: 'allow' }
 
-			// jsx-a11y counts onError/onLoad as interactions, so an <img> with a load-failure
-			// fallback is flagged with no keyboard equivalent to add. The rest is its default.
-			'jsx-a11y/no-noninteractive-element-interactions': [
-				'error',
-				{ handlers: ['onClick', 'onMouseDown', 'onMouseUp', 'onKeyPress', 'onKeyDown', 'onKeyUp'] },
+/** No options: every rule decision lives here, and each consumer's eslint.config.mjs stays two lines */
+export const defineConfig = () => {
+	const gitignore = gitignoreFrom(process.cwd())
+	const manifest = existsSync('package.json') ? JSON.parse(readFileSync('package.json', 'utf8')) : {}
+	return [
+		...(gitignore ? [includeIgnoreFile(gitignore)] : []),
+		{
+			ignores: [
+				'**/*.gen.ts',
+				'**/_generated/', // codegen (Convex) rewritten on every dev run
+				'**/*-env.d.ts', // regenerated on build
+				'**/target/', // Cargo output; cmake litters it with `compiler_depend.ts` stubs that are not TypeScript
 			],
-
-			...rules,
 		},
-	})
-
-	// `interface` on a published surface invites consumer declaration merging
-	patchRule(configs, '@typescript-eslint/consistent-type-definitions', ([severity]) => [severity, 'type'])
-
-	// A flat dispatch switch (reducer, keybinding table) is not spaghetti: count it as 1
-	patchRule(configs, 'complexity', ([severity, max]) => [severity, { max: max?.max ?? max, variant: 'modified' }])
-
-	// Upstream wants a blank line after every `case`, which breaks empty fallthrough cases
-	patchRule(configs, '@stylistic/padding-line-between-statements', (entries) => [
-		...entries,
-		{ blankLine: 'any', prev: ['case', 'default'], next: ['case', 'default'] },
-	])
-
-	// CLAUDE.md's `_` prefix — upstream allows it on parameters but not variables
-	patchRule(configs, '@typescript-eslint/naming-convention', ([severity, ...entries]) => [
-		severity,
-		...entries.map((entry) => (entry.selector === 'variable' ? { ...entry, leadingUnderscore: 'allow' } : entry)),
-	])
-
-	// Upstream's next config is unscoped, so an entry in `rules` above would only reach .ts/.tsx
-	const nextOverrides = {
-		// its getRootDirs reads cwd only, so create() warns to raw stderr from every repo whose root has no route dir
-		'next/no-html-link-for-pages': ['pages', 'src/pages', 'app', 'src/app'].some((dir) => existsSync(dir))
-			? 'error'
-			: 'off',
-		'next/no-img-element': 'off', // `next: true` is unconditional, and a repo without Next has no next/image to move to
-	}
-	for (const config of configs)
-		for (const [ruleId, severity] of Object.entries(nextOverrides))
-			if (config.rules?.[ruleId]) config.rules[ruleId] = severity
-
-	// Upstream takes one entryPoint; settings merge per file, so each package gets its own
-	configs.push(
-		...tailwindEntries.map((entryPoint) => ({
-			files: [sourceOf(entryPoint)],
-			settings: {
-				'better-tailwindcss': {
-					entryPoint,
-					// plugin defaults minus `^styles?$`: a `style` variable here holds CSS declarations, not classes
-					variables: ['^classNames?$', '^classes$'],
-				},
+		// a fix belongs in the code or in this file, never in a comment
+		{ linterOptions: { noInlineConfig: true } },
+		{ languageOptions: { globals: { ...globals.browser, ...globals.node } } },
+		js.configs.recommended,
+		tseslint.configs.base,
+		{ ...tseslint.configs.eslintRecommended, files: TS },
+		{
+			files: TS,
+			languageOptions: { parserOptions: { projectService: true, jsxPragma: jsxPragma() } },
+			rules: {
+				...errors([...typeSafety, ...typeScript], '@typescript-eslint/'),
+				'@typescript-eslint/ban-ts-comment': ['error', { 'ts-expect-error': true }],
+				'@typescript-eslint/class-literal-property-style': ['error', 'getters'],
+				'@typescript-eslint/consistent-generic-constructors': ['error', 'constructor'],
+				// `as const` and `satisfies` stay allowed
+				'@typescript-eslint/consistent-type-assertions': ['error', { assertionStyle: 'never' }],
+				'@typescript-eslint/method-signature-style': ['error', 'property'],
+				'@typescript-eslint/no-empty-object-type': ['error', { allowInterfaces: 'with-single-extends' }],
+				'@typescript-eslint/no-extraneous-class': ['error', { allowWithDecorator: true }],
+				'@typescript-eslint/no-invalid-this': ['error', { capIsConstructor: false }],
+				'@typescript-eslint/no-unused-expressions': [
+					'error',
+					{ allowShortCircuit: false, allowTaggedTemplates: false, allowTernary: false },
+				],
+				'@typescript-eslint/prefer-literal-enum-member': ['error', { allowBitwiseExpressions: true }],
+				'@typescript-eslint/prefer-nullish-coalescing': ['error', { ignorePrimitives: { string: true } }],
+				'@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
+				'require-await': 'off',
 			},
-		})),
-	)
-
-	// Upstream's react block covers JS, where no type info exists: this typed rule crashed the run on the first `&&`
-	configs.push({ files: ['**/*.?([cm])js?(x)'], rules: { '@eslint-react/no-leaked-conditional-rendering': 'off' } })
-
-	// React Compiler diagnostics: fullstacksjs registers none, and disable comments name them
-	configs.push(reactHooks.configs.flat['recommended-latest'])
-
-	return configs
+		},
+		reactHooks.configs.flat['recommended-latest'],
+		a11y.configs.strict,
+		importX.recommended,
+		importX.typescript,
+		...('next' in { ...manifest.dependencies, ...manifest.devDependencies } ? [next.configs['core-web-vitals']] : []),
+		{
+			settings: {
+				'import-x/resolver-next': [createTypeScriptImportResolver({ bun: true })],
+				'import-x/core-modules': getBunBuiltinModules(),
+				// unset, no-cycle walks node_modules: 3x wedding-site's lint
+				'import-x/ignore': ['node_modules', String.raw`\.(scss|css|svg|json|mdx)$`],
+			},
+			rules: {
+				...errors(core),
+				...errors(imports, 'import-x/'),
+				...Object.fromEntries(coveredByTsc.map((id) => [`import-x/${id}`, 'off'])),
+				complexity: ['error', { max: 14, variant: 'modified' }], // a flat dispatch switch counts as 1
+				'max-depth': ['error', 4],
+				'max-lines': ['error', 2500],
+				'max-lines-per-function': ['error', 150],
+				'max-nested-callbacks': ['error', 7],
+				'max-params': ['error', 4],
+				'max-statements': ['error', 40],
+				'@typescript-eslint/naming-convention': [
+					'error',
+					{ selector: 'default', format: ['camelCase'], filter: notUnderscores },
+					{ selector: 'import', format: null },
+					{ selector: 'function', format: ['camelCase', 'PascalCase'] },
+					{ selector: 'variable', format: ['camelCase', 'UPPER_CASE', 'PascalCase'], ...underscoreOk },
+					{ selector: 'parameter', format: ['camelCase', 'PascalCase'], ...underscoreOk },
+					{ selector: 'memberLike', format: null },
+					{
+						selector: 'memberLike',
+						modifiers: ['static'],
+						format: ['camelCase', 'PascalCase'],
+						leadingUnderscore: 'allow',
+					},
+					{ selector: 'memberLike', modifiers: ['private'], format: ['camelCase'], leadingUnderscore: 'allow' },
+					{ selector: 'typeLike', format: ['PascalCase'] },
+					{ selector: 'enumMember', format: ['PascalCase'] },
+					{ selector: 'interface', format: ['PascalCase'], custom: { regex: '^I[A-Z]', match: false } },
+				],
+				'@typescript-eslint/consistent-type-definitions': ['error', 'type'], // `interface` on a published surface invites declaration merging
+				'@typescript-eslint/consistent-type-imports': ['error', { disallowTypeAnnotations: false }],
+				'no-unused-vars': 'off',
+				'@typescript-eslint/no-unused-vars': [
+					'error',
+					{
+						argsIgnorePattern: '^_',
+						varsIgnorePattern: '^_',
+						caughtErrorsIgnorePattern: '^_',
+						destructuredArrayIgnorePattern: '^_',
+						ignoreRestSiblings: true,
+					},
+				],
+				'object-shorthand': ['error', 'properties'],
+				eqeqeq: ['error', 'smart'],
+				'no-control-regex': 'off', // matching separators and ANSI escapes is deliberate; an invisible pasted one is the rare case
+				'no-eval': ['error', { allowIndirect: true }], // `(0, eval)` runs in global scope, out of reach of the caller's locals
+				'require-atomic-updates': ['error', { allowProperties: true }],
+				'jsx-a11y-x/alt-text': ['error', { img: ['Image'] }], // also check next/image
+				'jsx-a11y-x/media-has-caption': 'off', // flags every <video> without a <track>, speech or not; personal sites don't caption
+				// jsx-a11y counts onError/onLoad as interactions, so an <img> with a load-failure fallback has no keyboard equivalent to add
+				'jsx-a11y-x/no-noninteractive-element-interactions': [
+					'error',
+					{ handlers: ['onClick', 'onMouseDown', 'onMouseUp', 'onKeyPress', 'onKeyDown', 'onKeyUp'] },
+				],
+				// ARIA's grid pattern on a native table (recommended allows it, strict doesn't); a click-to-play <pre> keeps its text rendering
+				'jsx-a11y-x/no-noninteractive-element-to-interactive-role': [
+					'error',
+					{ table: ['grid'], td: ['gridcell'], pre: ['button'] },
+				],
+				'jsx-a11y-x/no-noninteractive-tabindex': ['error', { tags: ['div'] }], // daisyUI's focus collapse is a tabbable <div>; ARIA has no role for "expands on focus"
+			},
+		},
+	]
 }

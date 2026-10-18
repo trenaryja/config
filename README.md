@@ -35,12 +35,11 @@ Exit plan, when typescript-eslint announces TS 7 support:
 
 ## eslint
 
-Base: [@fullstacksjs/eslint-config](https://github.com/fullstacksjs/eslint-config) — detects test frameworks and storybook by itself. This layer adds:
+Each plugin's own published preset, plus one layer of named changes in `eslint.js`:
 
-- `typescript`, `react` and `next` always on — upstream's detection reads false from a monorepo root
-- the official React Compiler diagnostics (`eslint-plugin-react-hooks`)
-- Vercel's `next/*` error severities
-- upstream's Tailwind class lint, minus class order, wherever a CSS file does `@import 'tailwindcss'` — each against its own package's CSS
+- `@eslint/js` recommended, `typescript-eslint` with type-aware type-safety rules, `react-hooks` (React Compiler diagnostics), `jsx-a11y-x` strict, `import-x`, and `@next/eslint-plugin-next` core-web-vitals where the package depends on `next`
+- size and complexity limits (`max-*`, `complexity`)
+- nothing tsc already reports: the compiler gate in `tsconfig/base.json` owns those
 
 `eslint.config.mjs`:
 
@@ -48,8 +47,9 @@ Base: [@fullstacksjs/eslint-config](https://github.com/fullstacksjs/eslint-confi
 import { defineConfig } from '@trenaryja/config/eslint'
 
 export default defineConfig()
-// or with per-repo extras: defineConfig({ ignores: ['generated/**'], rules: { 'no-bitwise': 'off' } })
 ```
+
+That is the whole file in every repo, permanently: `defineConfig` takes no options, and `noInlineConfig` ignores every `eslint-disable` comment. A rule that fires wrongly across the fleet is tuned here; a hit anywhere else is fixed in the code.
 
 ## tsconfig
 

@@ -10,7 +10,10 @@
 	},
 	"type": "module",
 	"exports": {
-		"./eslint": "./eslint.js",
+		"./eslint": {
+			"types": "./eslint.d.ts",
+			"default": "./eslint.js"
+		},
 		"./prettier": "./prettier.json",
 		"./release-it": "./release-it.json",
 		"./tsconfig/*": "./tsconfig/*.json",
@@ -18,6 +21,7 @@
 	},
 	"files": [
 		"eslint.js",
+		"eslint.d.ts",
 		"prettier.json",
 		"release-it.json",
 		"tsconfig"
@@ -35,17 +39,25 @@
 		"release": "release-it"
 	},
 	"dependencies": {
-		"@fullstacksjs/eslint-config": "^15.2.0",
-		"@types/bun": "^1.4.2",
+		"@eslint/compat": "^2.1.1",
+		"@eslint/js": "^10.0.1",
+		"@next/eslint-plugin-next": "^16.4.0",
+		"@types/bun": "^1.4.3",
 		"@typescript/native": "npm:typescript@^7.0.2",
-		"eslint": "^10.11.0",
+		"eslint": "^10.13.0",
+		"eslint-import-resolver-typescript": "^4.4.5",
+		"eslint-plugin-import-x": "^4.17.1",
+		"eslint-plugin-jsx-a11y-x": "^0.2.0",
 		"eslint-plugin-react-hooks": "^7.1.1",
-		"prettier": "^3.9.8",
-		"typescript": "^6.0.3"
+		"globals": "^17.13.0",
+		"is-bun-module": "^2.0.0",
+		"prettier": "^3.9.10",
+		"typescript": "^6.0.3",
+		"typescript-eslint": "^8.71.1"
 	},
 	"devDependencies": {
-		"release-it": "^21.1.0",
-		"remeda": "^2.50.0",
+		"release-it": "^21.1.1",
+		"remeda": "^2.52.0",
 		"zod": "^4.6.7"
 	},
 	"prettier": "@trenaryja/config/prettier",
