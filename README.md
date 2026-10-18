@@ -33,6 +33,17 @@ Exit plan, when typescript-eslint announces TS 7 support:
 3. Remove the Renovate rule.
 4. Release once.
 
+### Bun-native fmt, lint and check
+
+Bun has `bun fmt` (Prettier-compatible), `bun lint` (reads `eslint.config.mjs`, runs about half the rules natively) and `bun check` (tsc diagnostics) in canary only; stable 1.4.3 has none of them. On canary `1.4.4-canary.1` (2026-10-17), all three matched the current pipeline on this repo and health.trenary.love, 2–10× faster.
+
+Plan, when a stable Bun ships all three:
+
+1. Run `fleet verify` with each command in place of `prettier -c`, `eslint` and `tsc`; every repo must report what it reports today.
+2. Rename every repo's `check` script to `chk`: a package.json script shadows the built-in of the same name, so `check` would hide `bun check` and a `check` that calls `bun check` calls itself. `chk` is the CI gate (lint, types, format, tests); `fix` applies every format and lint fix it can.
+3. Point `chk` and `fix` at the Bun commands fleet-wide; drop each tool this package owns once `bun fmt --doctor` and `bun lint --doctor` say nothing loads it.
+4. Release once.
+
 ## eslint
 
 Each plugin's own published preset, plus one layer of named changes in `eslint.js`:
