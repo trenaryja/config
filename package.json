@@ -45,7 +45,8 @@
 	},
 	"devDependencies": {
 		"release-it": "^21.1.0",
-		"remeda": "^2.50.0"
+		"remeda": "^2.50.0",
+		"zod": "^4.6.7"
 	},
 	"prettier": "@trenaryja/config/prettier",
 	"release-it": {

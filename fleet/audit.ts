@@ -1,6 +1,7 @@
 import { dirname } from 'node:path'
 import * as R from 'remeda'
 import ts from 'typescript'
+import { z } from 'zod'
 import { findConsumers, GIT, manifests } from './discover.ts'
 import self from '../package.json'
 import { lintCell, loadScans } from './verify.ts'
@@ -8,14 +9,20 @@ import { lintCell, loadScans } from './verify.ts'
 export const KINDS = ['tsconfig', 'eslint', 'package', 'lint'] as const
 export type Kind = (typeof KINDS)[number]
 
-type Manifest = {
-	workspaces?: unknown
-	prettier?: unknown
-	engines?: Record<string, string>
-	scripts?: Record<string, string>
-	dependencies?: Record<string, string>
-	devDependencies?: Record<string, string>
-}
+const versions = z.record(z.string(), z.string()).optional()
+const manifestSchema = z.object({
+	workspaces: z.unknown().optional(),
+	prettier: z.unknown().optional(),
+	engines: versions,
+	scripts: versions,
+	dependencies: versions,
+	devDependencies: versions,
+})
+type Manifest = z.infer<typeof manifestSchema>
+
+const tsconfigSchema = z
+	.object({ extends: z.unknown().optional(), compilerOptions: z.record(z.string(), z.unknown()).default({}) })
+	.catchall(z.unknown())
 
 /** `undefined` = file absent and not expected there; `notes` = deliberate residue that still counts as clean */
 export type Cell = { path: string; residue: string[]; notes: string[]; raw: string } | undefined
@@ -35,7 +42,7 @@ const read = async (path: string) => {
 
 const show = (value: unknown) => JSON.stringify(value)
 
-const ALIAS_TARGETS = new Set(['./*', './src/*'])
+const ALIAS_TARGETS = new Set<unknown>(['./*', './src/*'])
 
 /** Bun and Turbopack ignore inherited `paths`, so a local `@/*` line is the one tsconfig override a runtime needs */
 const isRuntimeAlias = ([key, value]: [string, unknown]) =>
@@ -48,9 +55,9 @@ const isRuntimeAlias = ([key, value]: [string, unknown]) =>
 const NODE_HOST_PRESETS = new Set([`${self.name}/tsconfig/dom`, `${self.name}/tsconfig/node`])
 
 const auditTsconfig = (raw: string, isNodeHosted: boolean) => {
-	const { config, error } = ts.parseConfigFileTextToJson('tsconfig.json', raw)
-	if (error) return { residue: [ts.flattenDiagnosticMessageText(error.messageText, ' ')], notes: [] }
-	const { extends: parent, $schema: _schema, compilerOptions = {}, ...rest } = config
+	const parsed = ts.parseConfigFileTextToJson('tsconfig.json', raw)
+	if (parsed.error) return { residue: [ts.flattenDiagnosticMessageText(parsed.error.messageText, ' ')], notes: [] }
+	const { extends: parent, $schema: _schema, compilerOptions, ...rest } = tsconfigSchema.parse(parsed.config)
 	const [aliases, options] = R.partition(R.entries(compilerOptions), isRuntimeAlias)
 	return {
 		residue: [
@@ -151,10 +158,12 @@ const ESLINT_FILES = ['eslint.config.mjs', 'eslint.config.js', 'eslint.config.ts
 const auditDir = async (repo: string, dir: string, lint: Cell): Promise<Row> => {
 	const root = `${GIT}/${repo}/${dir}`
 	const manifestRaw = (await read(`${root}/package.json`)) ?? '{}'
-	const manifest: Manifest = JSON.parse(manifestRaw)
+	const manifest = manifestSchema.parse(JSON.parse(manifestRaw))
 	const role = dir === '.' ? (manifest.workspaces ? 'workspace' : 'single') : 'member'
 	const tsconfigRaw = await read(`${root}/tsconfig.json`)
-	const parent = tsconfigRaw && ts.parseConfigFileTextToJson('tsconfig.json', tsconfigRaw).config?.extends
+	const parent =
+		tsconfigRaw &&
+		tsconfigSchema.safeParse(ts.parseConfigFileTextToJson('tsconfig.json', tsconfigRaw).config).data?.extends
 	const preset = typeof parent === 'string' ? parent.replace(`${self.name}/tsconfig/`, '') : 'none'
 	const eslint = (
 		await Promise.all(ESLINT_FILES.map(async (name) => ({ name, raw: await read(`${root}/${name}`) })))

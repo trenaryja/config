@@ -31,7 +31,7 @@ else if (command === '--serve') {
 			},
 		},
 	})
-	console.log(`fleet audit re-runs on every load: ${server.url}`)
+	console.log(`fleet audit re-runs on every load: ${server.url.href}`)
 } else if (command)
 	console.log('usage: bun fleet [git | --json | --serve | verify scan | verify report | verify rule <ruleId>]')
 else console.log(formatText(await audit()))
