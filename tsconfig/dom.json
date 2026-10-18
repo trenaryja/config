@@ -2,6 +2,6 @@
 	"$schema": "https://json.schemastore.org/tsconfig",
 	"extends": "./base.json",
 	"compilerOptions": {
-		"lib": ["DOM", "DOM.Iterable", "ESNext"] // browser code gets the DOM back
+		"lib": ["DOM", "ESNext"] // browser code gets the DOM back
 	}
 }
