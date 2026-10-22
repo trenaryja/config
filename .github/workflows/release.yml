@@ -26,4 +26,4 @@ jobs:
           registry-url: https://registry.npmjs.org
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile # npm publish runs `prepare`, which generates the shipped rule types
-      - run: npm publish ${{ inputs.dry-run && '--dry-run' || '' }}
+      - run: npm ${{ inputs.dry-run && 'pack --dry-run' || 'publish' }} # publish --dry-run still refuses the already-published pre-bump version
