@@ -62,24 +62,15 @@ const severity = (level, ids, prefix) => {
 }
 
 /** @type {readonly Unprefixed<'@typescript-eslint/'>[]} on top of strict-type-checked and stylistic-type-checked */
-const typeScript = [
-	'switch-exhaustiveness-check',
-	'no-shadow',
-	'default-param-last',
-	'no-import-type-side-effects',
-	'no-useless-empty-export',
-	'no-unnecessary-qualifier',
-	'no-unnecessary-parameter-property-assignment',
-]
+const typeScript = ['switch-exhaustiveness-check', 'no-shadow', 'default-param-last', 'no-import-type-side-effects']
 
 /** @type {RuleLines<''>} */
 const core = [
-	['no-param-reassign', 'no-else-return', 'no-lonely-if', 'no-unneeded-ternary', 'prefer-template', 'func-names'],
+	['no-param-reassign', 'no-lonely-if', 'no-unneeded-ternary', 'prefer-template', 'func-names'],
 	['array-callback-return', 'no-unmodified-loop-condition', 'no-unreachable-loop', 'no-loop-func'],
 	['no-promise-executor-return', 'no-self-compare', 'no-constructor-return'],
 	['no-implicit-globals', 'guard-for-in', 'radix', 'no-sequences', 'no-return-assign'],
-	['no-useless-call', 'no-useless-computed-key', 'no-useless-rename', 'no-useless-return', 'no-useless-concat'],
-	['no-new-func'],
+	['no-useless-call', 'no-useless-computed-key', 'no-useless-rename', 'no-useless-return'],
 ]
 
 /** @type {readonly Unprefixed<'import-x/'>[]} */
@@ -94,12 +85,12 @@ const imports = [
 ]
 
 /** @type {readonly Unprefixed<'import-x/'>[]} tsc already reports these, and they re-parse every imported module */
-const coveredByTsc = ['no-unresolved', 'namespace', 'default', 'no-named-as-default-member', 'export']
+const coveredByTsc = ['no-unresolved', 'namespace', 'default', 'export']
 
 /** @type {readonly Unprefixed<'jsx-a11y-x/'>[]} */
 const a11yBeyondStrict = ['lang', 'no-aria-hidden-on-focusable', 'prefer-tag-over-role']
 
-/** @type {readonly Unprefixed<'unicorn/'>[]} the formatter owns layout; prettier strips the parens no-nested-ternary demands */
+/** @type {readonly Unprefixed<'unicorn/'>[]} the formatter owns layout; prettier strips the parens no-nested-ternary demands, lowercases the hex number-literal-case uppercases, and indents embedded gql/html/css its own way */
 const unicornLayout = [
 	'empty-brace-spaces',
 	'number-literal-case',
@@ -108,11 +99,43 @@ const unicornLayout = [
 	'no-nested-ternary',
 ]
 
-/** @type {readonly Unprefixed<'unicorn/'>[]} tsc reports these: TS2339, TS2304, TS2683 */
+/** @type {readonly Unprefixed<'unicorn/'>[]} tsc reports these: TS2339, TS2304, TS2683, TS7052, TS2554, TS2365, TS2322 */
 const unicornCoveredByTsc = [
 	'no-undeclared-class-members',
 	'no-optional-chaining-on-undeclared-variable',
 	'no-this-outside-of-class',
+	'no-collection-bracket-access',
+	'no-invalid-argument-count',
+	'no-chained-comparison',
+	'require-proxy-trap-boolean-return',
+]
+
+/** @type {RuleLines<''>} in TS, tsc or a type-aware @typescript-eslint twin reports these; JS keeps them */
+const coreTypedTwins = [
+	['no-fallthrough', 'valid-typeof', 'use-isnan', 'no-delete-var', 'no-unsafe-optional-chaining'],
+	['no-constant-condition', 'no-constant-binary-expression', 'no-async-promise-executor'],
+]
+
+/** @type {RuleLines<'unicorn/'>} in TS, a type-aware @typescript-eslint twin reports these with the type in hand; JS keeps them */
+const unicornTypedTwins = [
+	['no-unnecessary-boolean-comparison', 'no-useless-coercion', 'no-unnecessary-await', 'no-this-assignment'],
+	['no-static-only-class', 'prefer-string-starts-ends-with', 'no-nonstandard-builtin-properties'],
+	['prefer-string-trim-start-end', 'prefer-keyboard-event-key', 'no-new-buffer'], // no-deprecated
+]
+
+/** @type {readonly Unprefixed<'@typescript-eslint/'>[]} no-non-null-assertion and `assertionStyle: 'never'` already report every case */
+const subsumedByBans = [
+	'no-non-null-asserted-optional-chain',
+	'no-extra-non-null-assertion',
+	'no-confusing-non-null-assertion',
+	'no-non-null-asserted-nullish-coalescing',
+	'prefer-reduce-type-parameter',
+]
+
+/** @type {readonly Unprefixed<'@typescript-eslint/'>[]} tsc reports these: TS1540, TS1294 */
+const typeScriptCoveredByTsc = [
+	'prefer-namespace-keyword',
+	'no-namespace',
 ]
 
 /** @type {readonly Unprefixed<'unicorn/'>[]} one-line and bulleted JSDoc; implied `.length`; named `node:path` imports; `showTitle`-style booleans */
@@ -145,6 +168,8 @@ const unicornRules = /** @satisfies {RuleOptions} */ ({
 	'unicorn/no-process-exit': 'off', // CLI kits and `bun scripts/x.ts` exit outside a shebang file
 	'unicorn/prefer-switch': 'off', // a `break` per case outgrows the else-if chain it replaces
 	'unicorn/prefer-simple-condition-first': 'off', // reordering skips side effects and narrowing, so each hit is a hand audit
+	'unicorn/no-break-in-nested-loop': 'off', // flags a `switch` case's `break` inside a loop, the usual argv parser
+	'unicorn/no-abusive-eslint-disable': 'off', // noInlineConfig already ignores and reports every disable comment
 })
 
 const notUnderscores = { regex: '^_+$', match: false }
@@ -187,13 +212,17 @@ export const defineConfig = (...overrides) => {
 				'@typescript-eslint/method-signature-style': ['error', 'property'],
 				'@typescript-eslint/no-empty-object-type': ['error', { allowInterfaces: 'with-single-extends' }],
 				'@typescript-eslint/no-extraneous-class': ['error', { allowWithDecorator: true }],
-				'@typescript-eslint/no-invalid-this': ['error', { capIsConstructor: false }],
-				'@typescript-eslint/prefer-literal-enum-member': ['error', { allowBitwiseExpressions: true }],
 				'@typescript-eslint/prefer-nullish-coalescing': ['error', { ignorePrimitives: { string: true } }],
 				'@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
 				'@typescript-eslint/no-confusing-void-expression': ['error', { ignoreArrowShorthand: true }], // `onClick={() => setOpen(true)}`
 				'@typescript-eslint/non-nullable-type-assertion-style': 'off', // its fix is `!`, which no-non-null-assertion forbids
 				'@typescript-eslint/require-array-sort-compare': ['error', { ignoreStringArrays: true }],
+				'@typescript-eslint/no-empty-function': ['error', { allow: ['arrowFunctions'] }], // `() => {}` is the no-op; no-useless-undefined rejects `() => undefined`
+				'@typescript-eslint/prefer-regexp-exec': 'off', // its `.exec()` is what unicorn/prefer-regexp-test flags in a condition
+				'@typescript-eslint/no-unnecessary-template-expression': 'off', // unicorn/no-useless-template-literals also flags `${n}` and `${any}`
+				'@typescript-eslint/prefer-find': 'off', // unicorn/prefer-array-find also flags `const [x] = xs.filter()` and findLast
+				'@typescript-eslint/no-require-imports': 'off', // unicorn/prefer-module reports `require`; erasableSyntaxOnly bans `import x = require()`
+				...severity('off', [...subsumedByBans, ...typeScriptCoveredByTsc], '@typescript-eslint/'),
 			}),
 		},
 		reactHooks.configs.flat['recommended-latest'],
@@ -215,6 +244,12 @@ export const defineConfig = (...overrides) => {
 				...severity('error', core.flat(), ''),
 				...severity('error', imports, 'import-x/'),
 				...severity('off', coveredByTsc, 'import-x/'),
+				'import-x/no-duplicates': 'off', // prettier's organize-imports merges them
+				'regexp/no-useless-escape': 'off', // core no-useless-escape covers strings and regexes
+				'regexp/no-legacy-features': 'off', // no-deprecated and unicorn/no-nonstandard-builtin-properties report `RegExp.$1`
+				'regexp/no-invisible-character': 'off', // unicorn/prefer-escaped-irregular-whitespace reports it in every literal
+				'no-misleading-character-class': 'off', // regexp/no-misleading-unicode-character also checks quantifiers and fixes
+				'no-irregular-whitespace': ['error', { skipTemplates: true, skipRegExps: true }], // unicorn owns literals, prettier the gaps between tokens
 				...severity('error', a11yBeyondStrict, 'jsx-a11y-x/'),
 				...unicornRules,
 				curly: ['error', 'multi'],
@@ -254,7 +289,7 @@ export const defineConfig = (...overrides) => {
 					{
 						argsIgnorePattern: '^_',
 						varsIgnorePattern: '^_',
-						caughtErrorsIgnorePattern: '^_',
+						caughtErrors: 'none', // unicorn/prefer-optional-catch-binding reports an unused `catch (error)`
 						destructuredArrayIgnorePattern: '^_',
 						ignoreRestSiblings: true,
 					},
@@ -279,6 +314,15 @@ export const defineConfig = (...overrides) => {
 				'jsx-a11y-x/no-noninteractive-tabindex': ['error', { tags: ['div'] }], // daisyUI's focus collapse is a tabbable <div>; ARIA has no role for "expands on focus"
 			}),
 		},
+		{
+			files: TS,
+			rules: /** @satisfies {RuleOptions} */ ({
+				...severity('off', coreTypedTwins.flat(), ''),
+				...severity('off', unicornTypedTwins.flat(), 'unicorn/'),
+			}),
+		},
+		// Next reads `config.matcher` without running the file, so a `String.raw` tag fails the build
+		{ files: ['**/{proxy,middleware}.?([cm])[jt]s'], rules: { 'unicorn/prefer-string-raw': 'off' } },
 		...overrides,
 	]
 }
