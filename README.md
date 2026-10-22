@@ -50,6 +50,8 @@ Each plugin's own published preset, plus one layer of named changes in `eslint.j
 - nothing tsc already reports: the compiler gate in `tsconfig/base.json` owns those
 - no entry that repeats a preset or a rule's default options: `bun fleet verify redundant`, run in `chk`
 
+`unicorn` is the broadest general-purpose rule set, and most of what the fleet trips. Bun's `bun lint` can't replace eslint yet: it runs unicorn, `regexp`, `jsx-a11y-x`, `import-x` and `de-morgan` as JS plugins without type information, so unicorn's typed rules misreport. Revisit once `bun lint` ships in a Bun release and JS plugins get types ([oven-sh/bun#45162](https://github.com/oven-sh/bun/issues/45162)).
+
 `eslint.config.mjs`:
 
 ```js
