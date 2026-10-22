@@ -1,28 +1,37 @@
-import { includeIgnoreFile } from '@eslint/compat'
 import js from '@eslint/js'
 import next from '@next/eslint-plugin-next'
 import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescript'
+import deMorgan from 'eslint-plugin-de-morgan'
 import { flatConfigs as importX } from 'eslint-plugin-import-x'
 import a11y from 'eslint-plugin-jsx-a11y-x'
 import reactHooks from 'eslint-plugin-react-hooks'
+import regexp from 'eslint-plugin-regexp'
+import unicorn from 'eslint-plugin-unicorn'
+import { includeIgnoreFile } from 'eslint/config'
 import globals from 'globals'
-import { getBunBuiltinModules } from 'is-bun-module'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import ts from 'typescript'
 import tseslint from 'typescript-eslint'
 
+/** @import { RuleOptions } from './eslint-rules.gen.js' */
+/** @import { Override } from './eslint.d.ts' */
+/** @template {string} Prefix @typedef {keyof RuleOptions extends infer Id ? Id extends `${Prefix}${infer Name}` ? Name : never : never} Unprefixed */
+/** @template {string} Prefix @typedef {readonly (readonly Unprefixed<Prefix>[])[]} RuleLines */
+
 const TS = ['**/*.?([cm])ts', '**/*.?([cm])tsx']
+const JS = ['**/*.?([cm])js', '**/*.jsx']
 
 /**
  * a monorepo member linting itself reads its repo's .gitignore, not a missing `./.gitignore`
- * @param {string} dir
+ * @param {string} directory
  * @returns {string | undefined}
  */
-const gitignoreFrom = (dir) => {
-	if (existsSync(join(dir, '.gitignore'))) return join(dir, '.gitignore')
-	if (existsSync(join(dir, '.git')) || dir === dirname(dir)) return undefined
-	return gitignoreFrom(dirname(dir))
+const gitignoreFrom = (directory) => {
+	if (existsSync(join(directory, '.gitignore'))) return join(directory, '.gitignore')
+	return existsSync(join(directory, '.git')) || directory === dirname(directory)
+		? undefined
+		: gitignoreFrom(dirname(directory))
 }
 
 /** classic runtime (`jsx: react`) reads `React`; under react-jsx an `import React` is unused, yet by default any JSX counts as using it */
@@ -37,53 +46,119 @@ const jsxPragma = () => {
 	return options.jsx === ts.JsxEmit.React ? 'React' : null
 }
 
-/** @param {readonly string[]} ids */
-const errors = (ids, prefix = '') => Object.fromEntries(ids.map((id) => [`${prefix}${id}`, 'error']))
+/**
+ * @template {string} Level
+ * @template {string} Id
+ * @template {string} Prefix
+ * @param {Level} level
+ * @param {readonly Id[]} ids
+ * @param {Prefix} prefix
+ */
+const severity = (level, ids, prefix) => {
+	/** @type {{ [Rule in `${Prefix}${Id}`]?: Level }} */
+	const entries = {}
+	for (const id of ids) entries[`${prefix}${id}`] = level
+	return entries
+}
 
-/** type-aware: misuse of typed values that tsc lets through */
-const typeSafety = [
-	...['no-unsafe-assignment', 'no-unsafe-member-access', 'no-unsafe-call', 'no-unsafe-argument', 'no-unsafe-return'],
-	...['no-floating-promises', 'no-misused-promises', 'await-thenable', 'require-await', 'no-unnecessary-condition'],
-	...['no-unnecessary-type-assertion', 'no-base-to-string', 'switch-exhaustiveness-check', 'unbound-method'],
-]
-
+/** @type {readonly Unprefixed<'@typescript-eslint/'>[]} on top of strict-type-checked and stylistic-type-checked */
 const typeScript = [
-	...['adjacent-overload-signatures', 'array-type', 'no-array-constructor', 'no-confusing-non-null-assertion'],
-	...['no-duplicate-enum-values', 'no-dynamic-delete', 'no-extra-non-null-assertion'],
-	...['no-invalid-void-type', 'no-misused-new', 'no-namespace', 'no-non-null-asserted-nullish-coalescing'],
-	...['no-non-null-asserted-optional-chain', 'no-require-imports', 'no-this-alias', 'no-useless-constructor'],
-	...['no-wrapper-object-types', 'prefer-namespace-keyword', 'triple-slash-reference', 'unified-signatures'],
-	...['no-explicit-any', 'no-non-null-assertion', 'no-shadow', 'default-param-last'],
-	...['consistent-indexed-object-style', 'no-import-type-side-effects', 'no-unnecessary-type-constraint'],
-	...['no-unsafe-declaration-merging', 'no-useless-empty-export'],
-	...['prefer-as-const', 'prefer-for-of', 'prefer-function-type', 'no-empty-function'],
+	'switch-exhaustiveness-check',
+	'no-shadow',
+	'default-param-last',
+	'no-import-type-side-effects',
+	'no-useless-empty-export',
+	'no-unnecessary-qualifier',
+	'no-unnecessary-parameter-property-assignment',
 ]
 
+/** @type {RuleLines<''>} */
 const core = [
-	...['no-param-reassign', 'no-else-return', 'no-lonely-if', 'no-unneeded-ternary', 'prefer-template', 'func-names'],
-	...['array-callback-return', 'no-unmodified-loop-condition', 'no-unreachable-loop', 'no-loop-func'],
-	...['no-promise-executor-return', 'no-self-compare', 'no-constructor-return'],
-	...['no-implicit-globals', 'guard-for-in', 'radix', 'no-sequences', 'no-return-assign'],
-	...['no-useless-call', 'no-useless-computed-key', 'no-useless-rename', 'no-useless-return', 'no-useless-concat'],
+	['no-param-reassign', 'no-else-return', 'no-lonely-if', 'no-unneeded-ternary', 'prefer-template', 'func-names'],
+	['array-callback-return', 'no-unmodified-loop-condition', 'no-unreachable-loop', 'no-loop-func'],
+	['no-promise-executor-return', 'no-self-compare', 'no-constructor-return'],
+	['no-implicit-globals', 'guard-for-in', 'radix', 'no-sequences', 'no-return-assign'],
+	['no-useless-call', 'no-useless-computed-key', 'no-useless-rename', 'no-useless-return', 'no-useless-concat'],
+	['no-new-func'],
 ]
 
-const imports = ['no-cycle', 'no-extraneous-dependencies', 'no-mutable-exports', 'no-self-import']
+/** @type {readonly Unprefixed<'import-x/'>[]} */
+const imports = [
+	'no-cycle',
+	'no-extraneous-dependencies',
+	'no-mutable-exports',
+	'no-self-import',
+	'no-useless-path-segments',
+	'no-absolute-path',
+	'no-relative-packages',
+]
 
-/** tsc already reports these, and they re-parse every imported module */
-const coveredByTsc = ['no-unresolved', 'named', 'namespace', 'default', 'no-named-as-default-member']
+/** @type {readonly Unprefixed<'import-x/'>[]} tsc already reports these, and they re-parse every imported module */
+const coveredByTsc = ['no-unresolved', 'namespace', 'default', 'no-named-as-default-member', 'export']
+
+/** @type {readonly Unprefixed<'jsx-a11y-x/'>[]} */
+const a11yBeyondStrict = ['lang', 'no-aria-hidden-on-focusable', 'prefer-tag-over-role']
+
+/** @type {readonly Unprefixed<'unicorn/'>[]} the formatter owns layout; prettier strips the parens no-nested-ternary demands */
+const unicornLayout = [
+	'empty-brace-spaces',
+	'number-literal-case',
+	'template-indent',
+	'no-leading-empty-lines',
+	'no-nested-ternary',
+]
+
+/** @type {readonly Unprefixed<'unicorn/'>[]} tsc reports these: TS2339, TS2304, TS2683 */
+const unicornCoveredByTsc = [
+	'no-undeclared-class-members',
+	'no-optional-chaining-on-undeclared-variable',
+	'no-this-outside-of-class',
+]
+
+/** @type {readonly Unprefixed<'unicorn/'>[]} one-line and bulleted JSDoc; implied `.length`; named `node:path` imports; `showTitle`-style booleans */
+const unicornAgainstHouseStyle = [
+	'single-line-block-comment-style',
+	'no-asterisk-prefix-in-documentation-comments',
+	'explicit-length-check',
+	'import-style',
+	'consistent-boolean-name',
+	'no-await-expression-member',
+	'max-nested-calls',
+]
+
+const unicornRules = /** @satisfies {RuleOptions} */ ({
+	...severity('off', [...unicornLayout, ...unicornCoveredByTsc], 'unicorn/'),
+	'unicorn/logical-assignment-operators': 'off', // its `??=` is a React Compiler bail-out
+	'unicorn/no-null': 'off', // React renders and JSON carries null
+	'unicorn/filename-case': 'off', // components are PascalCase.tsx beside kebab-case modules
+	'unicorn/no-array-callback-reference': 'off', // point-free `.map(R.prop('id'))` is the house style
+	'unicorn/switch-case-braces': ['error', 'avoid'],
+	...severity('off', unicornAgainstHouseStyle, 'unicorn/'),
+	'unicorn/require-array-sort-compare': 'off', // @typescript-eslint's twin reads the element type, so string arrays pass
+	'unicorn/name-replacements': 'off', // a dictionary flags `idx` as hard as `res`; whether a short name has one reading depends on context
+	'unicorn/prefer-await': 'off', // a `.then().catch()` arrow beats a try block, and try/finally is a React Compiler bail-out
+	'unicorn/no-top-level-side-effects': 'off', // fires on every `export default defineConfig()`
+	'unicorn/no-top-level-assignment-in-function': 'off', // its fix is `state.x =`, the same module state behind an object
+	'unicorn/no-non-function-verb-prefix': 'off', // commands are values named for their action (`getApproval = defineCommand(…)`), and `EditForm` is a component
+	'unicorn/no-exports-in-scripts': 'off', // blind to the `if (import.meta.main)` guard Bun scripts export behind
+	'unicorn/no-incorrect-template-string-interpolation': 'off', // cli-progress `{bar}` tokens and JSX code samples are literal braces
+	'unicorn/no-process-exit': 'off', // CLI kits and `bun scripts/x.ts` exit outside a shebang file
+	'unicorn/prefer-switch': 'off', // a `break` per case outgrows the else-if chain it replaces
+	'unicorn/prefer-simple-condition-first': 'off', // reordering skips side effects and narrowing, so each hit is a hand audit
+})
 
 const notUnderscores = { regex: '^_+$', match: false }
-const underscoreOk = { filter: notUnderscores, leadingUnderscore: 'allow' }
+const underscoreOk = /** @type {const} */ ({ filter: notUnderscores, leadingUnderscore: 'allow' })
 
-/** No options: every rule decision lives here, and each consumer's eslint.config.mjs stays two lines */
-export const defineConfig = () => {
+/** @template {string} [Plugin=never] @param {readonly Override<Plugin>[]} overrides */
+export const defineConfig = (...overrides) => {
 	const gitignore = gitignoreFrom(process.cwd())
 	const manifest = existsSync('package.json') ? JSON.parse(readFileSync('package.json', 'utf8')) : {}
 	return [
 		...(gitignore ? [includeIgnoreFile(gitignore)] : []),
 		{
 			ignores: [
-				'**/*.gen.ts',
+				'**/*.gen.*',
 				'**/_generated/', // codegen (Convex) rewritten on every dev run
 				'**/*-env.d.ts', // regenerated on build
 				'**/target/', // Cargo output; cmake litters it with `compiler_depend.ts` stubs that are not TypeScript
@@ -94,12 +169,16 @@ export const defineConfig = () => {
 		{ languageOptions: { globals: { ...globals.browser, ...globals.node } } },
 		js.configs.recommended,
 		tseslint.configs.base,
-		{ ...tseslint.configs.eslintRecommended, files: TS },
+		...[...tseslint.configs.strictTypeChecked, ...tseslint.configs.stylisticTypeChecked].map((config) => ({
+			...config,
+			files: TS,
+		})),
+		{ ...tseslint.configs.eslintRecommended, files: JS }, // base tsconfig sets checkJs: tsc reports these in JS too
 		{
 			files: TS,
 			languageOptions: { parserOptions: { projectService: true, jsxPragma: jsxPragma() } },
-			rules: {
-				...errors([...typeSafety, ...typeScript], '@typescript-eslint/'),
+			rules: /** @satisfies {RuleOptions} */ ({
+				...severity('error', typeScript, '@typescript-eslint/'),
 				'@typescript-eslint/ban-ts-comment': ['error', { 'ts-expect-error': true }],
 				'@typescript-eslint/class-literal-property-style': ['error', 'getters'],
 				'@typescript-eslint/consistent-generic-constructors': ['error', 'constructor'],
@@ -109,32 +188,38 @@ export const defineConfig = () => {
 				'@typescript-eslint/no-empty-object-type': ['error', { allowInterfaces: 'with-single-extends' }],
 				'@typescript-eslint/no-extraneous-class': ['error', { allowWithDecorator: true }],
 				'@typescript-eslint/no-invalid-this': ['error', { capIsConstructor: false }],
-				'@typescript-eslint/no-unused-expressions': [
-					'error',
-					{ allowShortCircuit: false, allowTaggedTemplates: false, allowTernary: false },
-				],
 				'@typescript-eslint/prefer-literal-enum-member': ['error', { allowBitwiseExpressions: true }],
 				'@typescript-eslint/prefer-nullish-coalescing': ['error', { ignorePrimitives: { string: true } }],
 				'@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
-				'require-await': 'off',
-			},
+				'@typescript-eslint/no-confusing-void-expression': ['error', { ignoreArrowShorthand: true }], // `onClick={() => setOpen(true)}`
+				'@typescript-eslint/non-nullable-type-assertion-style': 'off', // its fix is `!`, which no-non-null-assertion forbids
+				'@typescript-eslint/require-array-sort-compare': ['error', { ignoreStringArrays: true }],
+			}),
 		},
 		reactHooks.configs.flat['recommended-latest'],
 		a11y.configs.strict,
+		regexp.configs.recommended,
+		unicorn.configs.recommended,
+		deMorgan.configs.recommended,
 		importX.recommended,
 		importX.typescript,
 		...('next' in { ...manifest.dependencies, ...manifest.devDependencies } ? [next.configs['core-web-vitals']] : []),
 		{
 			settings: {
+				// eslint's shebang runs Node: without `bun: true`, bare 'bun' resolves to @types/bun and no-extraneous-dependencies flags it
 				'import-x/resolver-next': [createTypeScriptImportResolver({ bun: true })],
-				'import-x/core-modules': getBunBuiltinModules(),
 				// unset, no-cycle walks node_modules: 3x wedding-site's lint
 				'import-x/ignore': ['node_modules', String.raw`\.(scss|css|svg|json|mdx)$`],
 			},
-			rules: {
-				...errors(core),
-				...errors(imports, 'import-x/'),
-				...Object.fromEntries(coveredByTsc.map((id) => [`import-x/${id}`, 'off'])),
+			rules: /** @satisfies {RuleOptions} */ ({
+				...severity('error', core.flat(), ''),
+				...severity('error', imports, 'import-x/'),
+				...severity('off', coveredByTsc, 'import-x/'),
+				...severity('error', a11yBeyondStrict, 'jsx-a11y-x/'),
+				...unicornRules,
+				curly: ['error', 'multi'],
+				'arrow-body-style': ['error', 'as-needed'],
+				'react-hooks/todo': 'error', // the only rule that reports React Compiler bail-outs (try/finally, for await, import())
 				complexity: ['error', { max: 14, variant: 'modified' }], // a flat dispatch switch counts as 1
 				'max-depth': ['error', 4],
 				'max-lines': ['error', 2500],
@@ -192,7 +277,8 @@ export const defineConfig = () => {
 					{ table: ['grid'], td: ['gridcell'], pre: ['button'] },
 				],
 				'jsx-a11y-x/no-noninteractive-tabindex': ['error', { tags: ['div'] }], // daisyUI's focus collapse is a tabbable <div>; ARIA has no role for "expands on focus"
-			},
+			}),
 		},
+		...overrides,
 	]
 }

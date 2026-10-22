@@ -2,12 +2,12 @@
 	"name": "@trenaryja/config",
 	"version": "0.1.0",
 	"description": "Shared configs: eslint, tsconfig, prettier, renovate, release-it",
-	"license": "MIT",
-	"author": "Justin Trenary",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/trenaryja/config.git"
 	},
+	"license": "MIT",
+	"author": "Justin Trenary",
 	"type": "module",
 	"exports": {
 		"./eslint": {
@@ -22,55 +22,54 @@
 	"files": [
 		"eslint.js",
 		"eslint.d.ts",
+		"eslint-rules.gen.d.ts",
 		"prettier.json",
 		"release-it.json",
 		"tsconfig"
 	],
+	"scripts": {
+		"chk": "bun check && bun fmt --check && eslint . --max-warnings=0",
+		"dev": "bun fleet --serve",
+		"fix": "bun fmt && eslint --fix .",
+		"get-latest": "bun update --latest --interactive",
+		"prepare": "eslint --print-config eslint.js > /dev/null",
+		"reinstall": "rm -rf node_modules bun.lock && bun install",
+		"release": "GITHUB_TOKEN=$(gh auth token) release-it"
+	},
+	"prettier": "@trenaryja/config/prettier",
+	"dependencies": {
+		"@eslint/js": "10.0.1",
+		"@next/eslint-plugin-next": "16.4.2",
+		"@release-it/conventional-changelog": "12.0.2",
+		"@types/bun": "1.4.3",
+		"eslint": "10.13.0",
+		"eslint-import-resolver-typescript": "4.4.5",
+		"eslint-plugin-de-morgan": "2.2.1",
+		"eslint-plugin-import-x": "4.17.1",
+		"eslint-plugin-jsx-a11y-x": "0.2.0",
+		"eslint-plugin-react-hooks": "7.1.1",
+		"eslint-plugin-regexp": "3.3.1",
+		"eslint-plugin-unicorn": "78.0.0",
+		"globals": "17.13.0",
+		"prettier": "3.9.10",
+		"prettier-plugin-organize-imports": "4.3.0",
+		"prettier-plugin-packagejson": "3.0.2",
+		"prettier-plugin-tailwindcss": "0.8.1",
+		"release-it": "21.1.1",
+		"typescript": "6.0.3",
+		"typescript-eslint": "8.72.0"
+	},
+	"devDependencies": {
+		"eslint-typegen": "2.3.1",
+		"remeda": "2.53.0",
+		"zod": "4.6.7"
+	},
 	"publishConfig": {
 		"access": "public",
 		"provenance": true
 	},
-	"scripts": {
-		"dev": "bun fleet --serve",
-		"fix": "prettier -w . && eslint --fix .",
-		"check": "tsc && prettier -c . && eslint . --max-warnings=0",
-		"get-latest": "bun update --latest -i",
-		"reinstall": "rm -rf node_modules && rm bun.lock && bun install",
-		"release": "release-it"
-	},
-	"dependencies": {
-		"@eslint/compat": "^2.1.1",
-		"@eslint/js": "^10.0.1",
-		"@next/eslint-plugin-next": "^16.4.0",
-		"@types/bun": "^1.4.3",
-		"@typescript/native": "npm:typescript@^7.0.2",
-		"eslint": "^10.13.0",
-		"eslint-import-resolver-typescript": "^4.4.5",
-		"eslint-plugin-import-x": "^4.17.1",
-		"eslint-plugin-jsx-a11y-x": "^0.2.0",
-		"eslint-plugin-react-hooks": "^7.1.1",
-		"globals": "^17.13.0",
-		"is-bun-module": "^2.0.0",
-		"prettier": "^3.9.10",
-		"typescript": "^6.0.3",
-		"typescript-eslint": "^8.71.1"
-	},
-	"devDependencies": {
-		"release-it": "^21.1.1",
-		"remeda": "^2.52.0",
-		"zod": "^4.6.7"
-	},
-	"prettier": "@trenaryja/config/prettier",
 	"release-it": {
-		"git": {
-			"commitMessage": "chore(release): v${version} [skip ci]"
-		},
-		"github": {
-			"release": true
-		},
-		"npm": {
-			"publish": false
-		}
+		"extends": "./release-it.json"
 	},
 	"trustedDependencies": [
 		"unrs-resolver"

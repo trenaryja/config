@@ -4,51 +4,48 @@ One package for the shared configs. Each config is a thin layer on a well-kept u
 
 ## Toolchain
 
-This package owns the shared tools as regular dependencies. Bun hoists them into each consuming repo — do not declare them there:
+This package ships every tool its configs need as regular dependencies. Bun hoists them into each consuming repo — do not declare them there:
 
-- `eslint`
-- `prettier`
+- `eslint` and its plugins
+- `prettier` and its plugins — for editors; `bun fmt` reads the same config
 - `typescript` (see below)
+- `release-it` and `@release-it/conventional-changelog`
 - `@types/bun`
-
-The rule: if this package configures a tool, this package owns the tool.
 
 A workspace repo needs `linker = "hoisted"` under `[install]` in its root `bunfig.toml` — Bun's isolated linker, the monorepo default, hoists nothing.
 
 Not included: `react` + `@types/react`. Their majors move together, so each repo keeps both.
 
-### TypeScript 6 and 7, side by side
+### Scripts
 
-typescript-eslint does not run on TS 7 — TS 7.0 has no JS API ([typescript-eslint#10940](https://github.com/typescript-eslint/typescript-eslint/issues/10940)). Until support lands, this package installs both ([Microsoft's pattern](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/)):
+Every repo runs the same two:
 
-- `typescript` (6.x) — the API for typescript-eslint and editors. A Renovate rule in `default.json` holds it below 7. Do not accept a 7.x bump from `get-latest`.
-- `@typescript/native` (alias of `typescript@7`) — owns the `tsc` bin. Typechecks run the native Go compiler — except `next build`, which runs the bin of whatever `typescript` resolves to, so 6.x.
+```json
+{
+	"chk": "bun check && bun fmt --check && eslint . --max-warnings=0",
+	"fix": "bun fmt && eslint --fix ."
+}
+```
 
-Not used: the official `@typescript/typescript6` wrapper. Bun resolves its internal `npm:typescript` alias back to the wrapper itself — circular, empty module.
+A workspace root appends `. '!apps' '!packages'` to each `bun fmt` and `--ignore-pattern apps --ignore-pattern packages` to each `eslint`: members run their own, so turbo filters and caches them per package.
 
-Exit plan, when typescript-eslint announces TS 7 support:
+`chk`, not `check`: a package.json script shadows the built-in of the same name, so a `check` script would hide `bun check`. `bun check` typechecks with the TS 7 compiler built into Bun 1.4.4+.
 
-1. Delete `@typescript/native`.
-2. Bump `typescript` to `^7`.
-3. Remove the Renovate rule.
-4. Release once.
+### TypeScript 6 for the API
 
-### Bun-native fmt, lint and check
+`typescript` stays on 6.x for typescript-eslint, editors and `next build`; the TypeScript rule in `default.json` holds it there and says why. Typechecks run TS 7 through `bun check`.
 
-Bun has `bun fmt` (Prettier-compatible), `bun lint` (reads `eslint.config.mjs`, runs about half the rules natively) and `bun check` (tsc diagnostics) in canary only; stable 1.4.3 has none of them. On canary `1.4.4-canary.1` (2026-10-17), all three matched the current pipeline on this repo and health.trenary.love, 2–10× faster.
+Exit, once that rule's condition is met:
 
-Plan, when a stable Bun ships all three:
-
-1. Run `fleet verify` with each command in place of `prettier -c`, `eslint` and `tsc`; every repo must report what it reports today.
-2. Rename every repo's `check` script to `chk`: a package.json script shadows the built-in of the same name, so `check` would hide `bun check` and a `check` that calls `bun check` calls itself. `chk` is the CI gate (lint, types, format, tests); `fix` applies every format and lint fix it can.
-3. Point `chk` and `fix` at the Bun commands fleet-wide; drop each tool this package owns once `bun fmt --doctor` and `bun lint --doctor` say nothing loads it.
-4. Release once.
+1. Bump `typescript` to `^7`.
+2. Delete the TypeScript rule in `default.json`.
+3. Release once.
 
 ## eslint
 
 Each plugin's own published preset, plus one layer of named changes in `eslint.js`:
 
-- `@eslint/js` recommended, `typescript-eslint` with type-aware type-safety rules, `react-hooks` (React Compiler diagnostics), `jsx-a11y-x` strict, `import-x`, and `@next/eslint-plugin-next` core-web-vitals where the package depends on `next`
+- `@eslint/js` recommended, `typescript-eslint` strict and stylistic (type-checked), `regexp`, `unicorn`, `de-morgan`, `react-hooks` (React Compiler diagnostics), `jsx-a11y-x` strict, `import-x`, and `@next/eslint-plugin-next` core-web-vitals where the package depends on `next`
 - size and complexity limits (`max-*`, `complexity`)
 - nothing tsc already reports: the compiler gate in `tsconfig/base.json` owns those
 
@@ -60,7 +57,13 @@ import { defineConfig } from '@trenaryja/config/eslint'
 export default defineConfig()
 ```
 
-That is the whole file in every repo, permanently: `defineConfig` takes no options, and `noInlineConfig` ignores every `eslint-disable` comment. A rule that fires wrongly across the fleet is tuned here; a hit anywhere else is fixed in the code.
+That is the default file in every repo, and `noInlineConfig` ignores every `eslint-disable` comment. A rule that fires wrongly across the fleet is tuned here; a hit anywhere else is fixed in the code.
+
+As a bandaid until the fix lands here, `defineConfig` appends config objects after its own. Their `rules` are typed against every rule this package ships, options included, so a typo or a bad option fails `tsc`. A plugin registered in `plugins` opens up its own `<name>/*` rules, options unchecked:
+
+```js
+export default defineConfig({ files: ['scripts/**'], rules: { complexity: ['error', { max: 20 }] } })
+```
 
 ## tsconfig
 
@@ -94,13 +97,12 @@ Renovate reads this from GitHub — no publish involved. `renovate.json`:
 
 ## release-it
 
-`.release-it.js`:
+`package.json`:
 
-```js
-import config from '@trenaryja/config/release-it' with { type: 'json' }
-export default config
+```json
+{ "release-it": { "extends": "@trenaryja/config/release-it" } }
 ```
 
 ## Releasing this package
 
-Before releasing, `bun fleet verify scan` then `bun fleet verify report` lint every sibling repo that consumes this package against the working `eslint.js`. `bun run release` makes the tag and the GitHub release. Publishing that release triggers `release.yml`, which publishes to npm with provenance via [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) — no token, no secret. The trusted publisher is configured in the npm package settings: repo `trenaryja/config`, workflow `release.yml`.
+Before releasing, `bun fleet verify scan` then `bun fleet verify report` lint every sibling repo that consumes this package against the working `eslint.js`. `bun run release` picks the version from the conventional commits, then makes the tag and the GitHub release with their changelog, authenticated by your `gh` login. Publishing that release triggers `release.yml`, which publishes to npm with provenance via [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) — no token, no secret. The trusted publisher is configured in the npm package settings: repo `trenaryja/config`, workflow `release.yml`.

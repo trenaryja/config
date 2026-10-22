@@ -1,3 +1,16 @@
-import type { Linter } from 'eslint'
+import type { ESLint, Linter } from 'eslint'
+import type { RuleOptions } from './eslint-rules.gen.js'
 
-export declare const defineConfig: () => Linter.Config[]
+/** A config object whose `rules` are checked against every rule this package ships, options included; a plugin it registers opens up `<plugin>/*` keys, options unchecked */
+export type Override<Plugin extends string = never> = Omit<Linter.Config, 'plugins' | 'rules'> & {
+	plugins?: Record<Plugin, ESLint.Plugin>
+	rules?: RuleOptions & Partial<Record<`${Plugin}/${string}`, Linter.RuleEntry>>
+}
+
+/**
+ * The shipped config, with `overrides` appended so they win.
+ * - Overrides are a bandaid: a rule that fires wrongly belongs fixed in this package, not patched in each repo.
+ */
+export declare const defineConfig: <const Plugin extends string = never>(
+	...overrides: readonly Override<Plugin>[]
+) => Linter.Config[]

@@ -1,0 +1,2 @@
+[install]
+exact = true # dependencies reach consumers through this package; a range lets them resolve versions fleet verify never ran
