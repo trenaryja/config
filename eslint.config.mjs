@@ -5,9 +5,9 @@ import { writeFileSync } from 'node:fs'
 import { defineConfig } from './eslint.js'
 
 const config = defineConfig({
-	files: ['eslint.config.mjs'],
+	files: ['eslint.config.mjs', 'fleet/redundant.ts'],
 	rules: {
-		// typegen needs every core rule module, and ESLint 10 deprecates this export without a replacement
+		// typegen and `verify redundant` need every core rule module, and ESLint 10 deprecates this export without a replacement
 		'@typescript-eslint/no-deprecated': [
 			'error',
 			{

@@ -48,6 +48,7 @@ Each plugin's own published preset, plus one layer of named changes in `eslint.j
 - `@eslint/js` recommended, `typescript-eslint` strict and stylistic (type-checked), `regexp`, `unicorn`, `de-morgan`, `react-hooks` (React Compiler diagnostics), `jsx-a11y-x` strict, `import-x`, and `@next/eslint-plugin-next` core-web-vitals where the package depends on `next`
 - size and complexity limits (`max-*`, `complexity`)
 - nothing tsc already reports: the compiler gate in `tsconfig/base.json` owns those
+- no entry that repeats a preset or a rule's default options: `bun fleet verify redundant`, run in `chk`
 
 `eslint.config.mjs`:
 

@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { Cell } from './audit.ts'
 import { autofix } from './autofix.ts'
 import { findConsumers, findEslint, GIT } from './discover.ts'
+import { redundant } from './redundant.ts'
 
 const CACHE = '/tmp/eslint-verify.json'
 
@@ -245,5 +246,6 @@ export const verify = async ([command, argument, ...more]: readonly string[]) =>
 	else if (command === 'report') await report()
 	else if (command === 'rule' && argument) await rule(argument)
 	else if (command === 'autofix') await autofix(rest)
-	else console.log('usage: bun fleet verify scan | report | rule <ruleId> | autofix [repo…]')
+	else if (command === 'redundant') await redundant()
+	else console.log('usage: bun fleet verify scan | report | rule <ruleId> | autofix [repo…] | redundant')
 }
