@@ -1,7 +1,5 @@
-import type { Cell, Row } from './audit.ts'
-import { isClean, KINDS, label } from './audit.ts'
-import type { Column, RepositoryGit, Status } from './git.ts'
-import { byStatus, COLUMNS, describe, statusOf, totals } from './git.ts'
+import { type Cell, type Row, isClean, KINDS, label } from './audit.ts'
+import { type Column, type RepositoryGit, type Status, byStatus, COLUMNS, describe, statusOf, totals } from './git.ts'
 
 const escape = (text: string) => text.replaceAll(/[&<>"]/g, (char) => `&#${char.codePointAt(0)};`)
 

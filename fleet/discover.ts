@@ -1,6 +1,6 @@
-import { statSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
-import { basename, dirname } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 
 const ROOT = dirname(import.meta.dir)
 export const GIT = dirname(ROOT)
@@ -48,4 +48,10 @@ export const findConsumers = async () => {
 			}),
 	)
 	return found.filter((name) => name !== null)
+}
+
+export const findEslint = (directory: string): string | undefined => {
+	const bin = join(directory, 'node_modules/.bin/eslint')
+	if (existsSync(bin)) return bin
+	return directory === dirname(directory) ? undefined : findEslint(dirname(directory))
 }

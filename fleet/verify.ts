@@ -1,9 +1,9 @@
-import { existsSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import * as R from 'remeda'
 import { z } from 'zod'
 import type { Cell } from './audit.ts'
-import { findConsumers, GIT } from './discover.ts'
+import { autofix } from './autofix.ts'
+import { findConsumers, findEslint, GIT } from './discover.ts'
 
 const CACHE = '/tmp/eslint-verify.json'
 
@@ -41,12 +41,6 @@ const scanSchema = z.object({
 	working: z.array(hitSchema),
 })
 type Scan = z.infer<typeof scanSchema>
-
-const findEslint = (directory: string): string | undefined => {
-	const bin = join(directory, 'node_modules/.bin/eslint')
-	if (existsSync(bin)) return bin
-	return directory === dirname(directory) ? undefined : findEslint(dirname(directory))
-}
 
 /** RSS of a process and every descendant */
 const treeRss = (root: number) => {
@@ -237,9 +231,11 @@ const rule = async (ruleId: string) => {
 	for (const hit of hits) console.log(`  ${hit.repo}/${hit.file}:${hit.line}\n      ${hit.message}`)
 }
 
-export const verify = async ([command, argument]: readonly string[]) => {
+export const verify = async ([command, argument, ...more]: readonly string[]) => {
+	const rest = [argument, ...more].filter((x) => x !== undefined)
 	if (command === 'scan') await scan()
 	else if (command === 'report') await report()
 	else if (command === 'rule' && argument) await rule(argument)
-	else console.log('usage: bun fleet verify scan | report | rule <ruleId>')
+	else if (command === 'autofix') await autofix(rest)
+	else console.log('usage: bun fleet verify scan | report | rule <ruleId> | autofix [repo…]')
 }
