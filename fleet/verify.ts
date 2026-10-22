@@ -21,7 +21,8 @@ const LINTED = /\.[cm]?[jt]sx?$/
 const lintResults = z.array(
 	z.object({
 		filePath: z.string(),
-		messages: z.array(z.object({ ruleId: z.string().nullable(), line: z.number(), message: z.string() })),
+		// a fatal parse error carries no line
+		messages: z.array(z.object({ ruleId: z.string().nullable(), line: z.number().default(0), message: z.string() })),
 	}),
 )
 
