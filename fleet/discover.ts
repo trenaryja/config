@@ -10,8 +10,12 @@ export const SELF = basename(ROOT)
 const DEPTHS = ['package.json', '*/package.json', '*/*/package.json']
 
 /** repo-relative package.json paths */
-export const manifests = async (repo: string) =>
-	(await Promise.all(DEPTHS.map(async (pattern) => Array.fromAsync(new Bun.Glob(pattern).scan(`${GIT}/${repo}`)))))
+export const manifests = async (repository: string) =>
+	(
+		await Promise.all(
+			DEPTHS.map(async (pattern) => Array.fromAsync(new Bun.Glob(pattern).scan(`${GIT}/${repository}`))),
+		)
+	)
 		.flat()
 		.filter((path) => !path.includes('node_modules'))
 
@@ -22,7 +26,13 @@ export const findRepos = async () =>
 			(entry) => entry.isDirectory() && statSync(`${GIT}/${entry.name}/.git`, { throwIfNoEntry: false })?.isDirectory(),
 		)
 		.map((entry) => entry.name)
-		.sort()
+		.toSorted()
+
+/** every repo with a root package.json must consume this package; a repo with only nested manifests is exempt */
+export const findPackageRepos = async () =>
+	(await findRepos()).filter(
+		(name) => name !== SELF && statSync(`${GIT}/${name}/package.json`, { throwIfNoEntry: false }),
+	)
 
 export const findConsumers = async () => {
 	const found = await Promise.all(

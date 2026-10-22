@@ -1,12 +1,13 @@
-import self from '../package.json'
+import { registerHooks } from 'node:module'
+import self from '../package.json' with { type: 'json' }
 
-/** `bun --preload` this: every installed copy of our eslint.js re-exports the working one, so its imports resolve against this repo's deps as the next release will */
-Bun.plugin({
-	name: 'swap-eslint',
-	setup(build) {
-		build.onLoad({ filter: new RegExp(`/${self.name}/eslint\\.js$`) }, () => ({
-			contents: `export * from ${JSON.stringify(`${import.meta.dir}/../eslint.js`)}`,
-			loader: 'js',
-		}))
+const working = new URL('../eslint.js', import.meta.url).href
+const installed = new RegExp(String.raw`/${self.name}/eslint\.js$`)
+
+/** `node --import` this: every installed copy of our eslint.js resolves to the working one, so its imports resolve against this repo's deps as the next release will */
+registerHooks({
+	resolve: (specifier, context, nextResolve) => {
+		const result = nextResolve(specifier, context)
+		return installed.test(result.url) ? { ...result, url: working } : result
 	},
 })

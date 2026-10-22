@@ -2,8 +2,8 @@ import { existsSync, statSync } from 'node:fs'
 import * as R from 'remeda'
 import { findRepos, GIT } from './discover.ts'
 
-const run = async (repo: string, ...args: string[]) => {
-	const proc = Bun.spawn(['git', '-C', `${GIT}/${repo}`, ...args], { stdout: 'pipe', stderr: 'ignore' })
+const run = async (repository: string, ...args: string[]) => {
+	const proc = Bun.spawn(['git', '-C', `${GIT}/${repository}`, ...args], { stdout: 'pipe', stderr: 'ignore' })
 	return (await new Response(proc.stdout).text()).trim()
 }
 
@@ -37,24 +37,24 @@ const worktreesOf = (porcelain: string) =>
 		}),
 	)
 
-const readRepo = async (repo: string) => {
+const readRepository = async (repository: string) => {
 	const [porcelain, refs, remotes, stash, committed, worktrees] = await Promise.all([
-		run(repo, 'status', '--porcelain'),
-		run(repo, 'for-each-ref', `--format=${BRANCH_FORMAT}`, 'refs/heads'),
-		run(repo, 'for-each-ref', '--format=%(refname:short)', 'refs/remotes'),
-		run(repo, 'stash', 'list'),
-		run(repo, 'log', '-1', '--format=%ct'),
-		run(repo, 'worktree', 'list', '--porcelain'),
+		run(repository, 'status', '--porcelain'),
+		run(repository, 'for-each-ref', `--format=${BRANCH_FORMAT}`, 'refs/heads'),
+		run(repository, 'for-each-ref', '--format=%(refname:short)', 'refs/remotes'),
+		run(repository, 'stash', 'list'),
+		run(repository, 'log', '-1', '--format=%ct'),
+		run(repository, 'worktree', 'list', '--porcelain'),
 	])
 	const checkouts = worktreesOf(worktrees)
 	const heads = lines(refs).map((line) => {
-		const [name = '', upstream = '', at = '0'] = line.split('\t')
+		const [name = '', upstream = '', at = '0'] = line.split('\t', 3)
 		return { name, upstream, at: Number(at) * 1000 }
 	})
 	// a repo with no commits has no head to compare against, so the placeholder keeps every query below total
 	const trunk = heads.find((head) => head.name === 'main') ?? heads[0] ?? { name: 'HEAD', upstream: '', at: 0 }
 	const [ahead = 0, behind = 0] = trunk.upstream
-		? (await run(repo, 'rev-list', '--left-right', '--count', `${trunk.name}...${trunk.upstream}`))
+		? (await run(repository, 'rev-list', '--left-right', '--count', `${trunk.name}...${trunk.upstream}`))
 				.split('\t')
 				.map(Number)
 		: []
@@ -64,8 +64,8 @@ const readRepo = async (repo: string) => {
 			.filter((head) => head.name !== trunk.name)
 			.map(async (head) => {
 				const [unique, mirrors] = await Promise.all([
-					run(repo, 'rev-list', '--count', `${trunk.name}..${head.name}`),
-					run(repo, 'for-each-ref', '--contains', head.name, '--format=%(refname:short)', 'refs/remotes'),
+					run(repository, 'rev-list', '--count', `${trunk.name}..${head.name}`),
+					run(repository, 'for-each-ref', '--contains', head.name, '--format=%(refname:short)', 'refs/remotes'),
 				])
 				const mirror = lines(mirrors)[0]
 				return {
@@ -79,7 +79,7 @@ const readRepo = async (repo: string) => {
 			}),
 	)
 	return {
-		repo,
+		repo: repository,
 		files: lines(porcelain).length,
 		ahead,
 		behind,
@@ -90,14 +90,14 @@ const readRepo = async (repo: string) => {
 		stash: lines(stash).length,
 		committed: Number(committed) * 1000,
 		// git writes FETCH_HEAD on every fetch, so its mtime dates the ahead/behind counts above
-		fetched: modified(`${GIT}/${repo}/.git/FETCH_HEAD`),
+		fetched: modified(`${GIT}/${repository}/.git/FETCH_HEAD`),
 	}
 }
 
-export type RepoGit = Awaited<ReturnType<typeof readRepo>>
+export type RepositoryGit = Awaited<ReturnType<typeof readRepository>>
 
 /** every repo under ~/Git, not just config's consumers: `config` and `nas` carry commits too */
-export const gitAudit = async () => Promise.all((await findRepos()).map(readRepo))
+export const gitAudit = async () => Promise.all((await findRepos()).map(readRepository))
 
 /**
  * The trunk alone, ordered worst first. Branches stay out of it: a local-only `wip/*` or proposal
@@ -105,15 +105,15 @@ export const gitAudit = async () => Promise.all((await findRepos()).map(readRepo
  */
 export const STATUSES = ['new', 'unlinked', 'unpushed', 'dirty', 'clean'] as const
 
-export const statusOf = (row: RepoGit) =>
-	row.empty ? 'new' : !row.tracked ? 'unlinked' : row.ahead > 0 ? 'unpushed' : row.files > 0 ? 'dirty' : 'clean'
+export const statusOf = (row: RepositoryGit) =>
+	row.empty ? 'new' : row.tracked ? (row.ahead > 0 ? 'unpushed' : row.files > 0 ? 'dirty' : 'clean') : 'unlinked'
 
 export type Status = (typeof STATUSES)[number]
 
 const RELATIVE = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
 
 const UNITS = [
-	['year', 31536e6],
+	['year', 31_536e6],
 	['month', 2592e6],
 	['week', 6048e5],
 	['day', 864e5],
@@ -130,18 +130,18 @@ const ago = (at: number) => {
 
 const digit = (value: number) => (value ? String(value) : '·')
 
-const unpushedOf = (row: RepoGit) =>
+const unpushedOf = (row: RepositoryGit) =>
 	row.empty
 		? 'no commits'
-		: !row.tracked
-			? 'no upstream'
-			: row.behind
+		: row.tracked
+			? row.behind
 				? `+${row.ahead} -${row.behind}`
 				: digit(row.ahead)
+			: 'no upstream'
 
-export const unlinkedOf = (row: RepoGit) => row.branches.filter((branch) => BROKEN.has(branch.state)).length
+export const unlinkedOf = (row: RepositoryGit) => row.branches.filter((branch) => BROKEN.has(branch.state)).length
 
-export const describe = (branch: RepoGit['branches'][number]) =>
+export const describe = (branch: RepositoryGit['branches'][number]) =>
 	[
 		branch.name,
 		`+${branch.unique} unique`,
@@ -153,7 +153,7 @@ export const describe = (branch: RepoGit['branches'][number]) =>
 		.filter(Boolean)
 		.join('  ')
 
-export type Column = { key: string; show: (row: RepoGit) => string; sort: (row: RepoGit) => number }
+export type Column = { key: string; show: (row: RepositoryGit) => string; sort: (row: RepositoryGit) => number }
 
 export const COLUMNS: readonly Column[] = [
 	{ key: 'status', show: statusOf, sort: (row) => STATUSES.indexOf(statusOf(row)) },
@@ -167,18 +167,16 @@ export const COLUMNS: readonly Column[] = [
 	{ key: 'fetched', show: (row) => ago(row.fetched), sort: (row) => row.fetched },
 ]
 
-export const totals = (rows: RepoGit[]) => ({
+export const totals = (rows: RepositoryGit[]) => ({
 	unpushed: R.sumBy(rows, (row) => row.ahead),
 	unlinked: R.sumBy(rows, unlinkedOf),
 	clean: rows.filter((row) => statusOf(row) === 'clean').length,
 })
 
-export const byStatus = (rows: RepoGit[]) =>
-	[...rows].sort(
-		(a, b) => STATUSES.indexOf(statusOf(a)) - STATUSES.indexOf(statusOf(b)) || a.repo.localeCompare(b.repo),
-	)
+export const byStatus = (rows: RepositoryGit[]) =>
+	rows.toSorted((a, b) => STATUSES.indexOf(statusOf(a)) - STATUSES.indexOf(statusOf(b)) || a.repo.localeCompare(b.repo))
 
-export const formatGit = (rows: RepoGit[]) => {
+export const formatGit = (rows: RepositoryGit[]) => {
 	const headers = ['', ...COLUMNS.map((column) => column.key)]
 	const cells = byStatus(rows).map((row) => [row.repo, ...COLUMNS.map((column) => column.show(row))])
 	const widths = headers.map((header, index) =>

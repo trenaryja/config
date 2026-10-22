@@ -1,9 +1,9 @@
-import { isClean, KINDS, label } from './audit.ts'
 import type { Cell, Row } from './audit.ts'
+import { isClean, KINDS, label } from './audit.ts'
+import type { Column, RepositoryGit, Status } from './git.ts'
 import { byStatus, COLUMNS, describe, statusOf, totals } from './git.ts'
-import type { Column, RepoGit, Status } from './git.ts'
 
-const escape = (text: string) => text.replace(/[&<>"]/g, (char) => `&#${char.charCodeAt(0)};`)
+const escape = (text: string) => text.replaceAll(/[&<>"]/g, (char) => `&#${char.codePointAt(0)};`)
 
 /** absent sorts before clean so an unexpected file never hides among the ✓ */
 const rank = (cell: Cell) => (cell === undefined ? -1 : cell.residue.length)
@@ -26,7 +26,7 @@ const renderCell = (row: Row, cell: Cell) => {
 		<form method="dialog" class="modal-backdrop"><button>close</button></form></dialog></td>`
 }
 
-const stat = (title: string, value: string, tone: string) =>
+const stat = (title: string, value: string | number, tone: string) =>
 	`<div class="stat bg-base-100 rounded-box shadow-md p-4"><div class="stat-title">${title}</div><div class="stat-value text-3xl sm:text-4xl ${tone}">${value}</div></div>`
 
 const sortable = (key: string, text: string) =>
@@ -40,7 +40,7 @@ const TONES: Record<Status, string> = {
 	clean: 'success',
 }
 
-const renderGitRow = (row: RepoGit) => {
+const renderGitRow = (row: RepositoryGit) => {
 	const branchList = row.branches
 		.map((branch) => `<li class="bg-base-200 rounded-box px-2 py-1">${escape(describe(branch))}</li>`)
 		.join('')
@@ -63,10 +63,10 @@ const renderGitRow = (row: RepoGit) => {
 		<th class="font-mono font-normal break-all">${escape(row.repo)}</th>${COLUMNS.map(cell).join('')}</tr>`
 }
 
-const renderGit = (rows: RepoGit[]) => {
+const renderGit = (rows: RepositoryGit[]) => {
 	const { unpushed, unlinked, clean } = totals(rows)
 	return `<div class="grid grid-cols-3 gap-3">
-${stat('unpushed', `${unpushed}`, 'text-warning')}${stat('unlinked', `${unlinked}`, 'text-error')}${stat('clean', `${clean}/${rows.length}`, 'text-success')}</div>
+${stat('unpushed', unpushed, 'text-warning')}${stat('unlinked', unlinked, 'text-error')}${stat('clean', `${clean}/${rows.length}`, 'text-success')}</div>
 <div class="card bg-base-100 border border-base-content/10 shadow-md overflow-x-auto mt-3">
 <table id="git" class="table table-xs sm:table-sm table-pin-rows"><thead><tr>${sortable('name', 'name')}${COLUMNS.map((column) => sortable(column.key, column.key)).join('')}</tr></thead>
 <tbody>${byStatus(rows).map(renderGitRow).join('\n')}</tbody></table></div>`
@@ -111,7 +111,7 @@ for (const table of document.querySelectorAll('table')) {
 /** `scanning` = `done/total` while a lint scan runs; the page refreshes itself until it ends */
 export const formatHtml = (
 	rows: Row[],
-	gitRows: RepoGit[],
+	gitRows: RepositoryGit[],
 	{ scanning, scannedAt }: { scanning?: string; scannedAt?: Date } = {},
 ) => {
 	const offCount = (kind: (typeof KINDS)[number]) => rows.filter((row) => !isClean(row.cells[kind])).length
@@ -136,7 +136,7 @@ export const formatHtml = (
 <input type="radio" name="board" role="tab" class="tab" aria-label="canonical" checked>
 <div role="tabpanel" class="tab-content bg-base-200 border-base-300 rounded-box p-3 sm:p-4">
 <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-${stat('canonical', `${clean}/${rows.length}`, 'text-success')}${KINDS.map((kind) => stat(`${kind} off`, `${offCount(kind)}`, 'text-warning')).join('')}</div>
+${stat('canonical', `${clean}/${rows.length}`, 'text-success')}${KINDS.map((kind) => stat(`${kind} off`, offCount(kind), 'text-warning')).join('')}</div>
 <div class="card bg-base-100 border border-base-content/10 shadow-md overflow-x-auto mt-3">
 <table id="canonical" class="table table-xs sm:table-sm table-pin-rows"><thead><tr>${sortable('name', 'name')}${KINDS.map((kind) => sortable(kind, kind)).join('')}</tr></thead>
 <tbody>${body}</tbody></table></div></div>

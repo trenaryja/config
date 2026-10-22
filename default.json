@@ -14,7 +14,7 @@
 			"groupName": "github actions"
 		},
 		{
-			"description": "typescript-eslint has no TS 7 support yet (typescript-eslint#10940) — the `typescript` dep stays 6.x for the linter's API while `@typescript/native` (alias) tracks 7.x for the tsc binary. Drop this rule when typescript-eslint announces TS 7 support.",
+			"description": "typescript-eslint needs the `typescript` JS API, which TS 7 lacks; drop once a typescript-eslint release supports TS 7.1 (typescript-eslint#12803)",
 			"matchDepNames": ["typescript"],
 			"allowedVersions": "<7"
 		}

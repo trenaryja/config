@@ -2,8 +2,8 @@ import { dirname } from 'node:path'
 import * as R from 'remeda'
 import ts from 'typescript'
 import { z } from 'zod'
-import { findConsumers, GIT, manifests } from './discover.ts'
 import self from '../package.json'
+import { findPackageRepos, GIT, manifests } from './discover.ts'
 import { lintCell, loadScans } from './verify.ts'
 
 export const KINDS = ['tsconfig', 'eslint', 'package', 'lint'] as const
@@ -89,18 +89,21 @@ const auditEslint = (raw: string) =>
 	ts.createSourceFile('eslint.config.ts', raw, ts.ScriptTarget.Latest, true).statements.flatMap((node) => {
 		if (isCanonicalImport(node)) return []
 		const call = ts.isExportAssignment(node) && ts.isCallExpression(node.expression) ? node.expression : undefined
-		if (call?.expression.getText() !== 'defineConfig') return [node.getText()]
-		return call.arguments.map((argument) => `defineConfig(${argument.getText()})`)
+		return call?.expression.getText() === 'defineConfig'
+			? call.arguments.map((argument) => `defineConfig(${argument.getText()})`)
+			: [node.getText()]
 	})
 
-/** extra steps (cargo, tests, codegen) are welcome; a missing core step is drift */
-const coreSteps = (skip = { prettier: '', eslint: '' }) => ({
-	fix: [`prettier -w .${skip.prettier}`, `eslint --fix .${skip.eslint}`],
-	check: ['tsc', `prettier -c .${skip.prettier}`, `eslint . --max-warnings=0${skip.eslint}`],
-})
+const NO_SKIP = { fmt: '', eslint: '' }
 
 /** members own their lint, so turbo can filter and cache it per package; a root that also covered them ran it twice */
-const ROOT_SKIP = { prettier: ` '!apps' '!packages'`, eslint: ' --ignore-pattern apps --ignore-pattern packages' }
+const ROOT_SKIP = { fmt: ` . '!apps' '!packages'`, eslint: ' --ignore-pattern apps --ignore-pattern packages' }
+
+/** extra steps (cargo, tests, codegen) are welcome; a missing core step is drift */
+const coreSteps = ({ fmt, eslint } = NO_SKIP) => ({
+	fix: [`bun fmt${fmt}`, `eslint --fix .${eslint}`],
+	chk: ['bun check', `bun fmt --check${fmt}`, `eslint . --max-warnings=0${eslint}`],
+})
 
 const CANONICAL_SCRIPTS = {
 	'get-latest': 'bun update --latest --interactive',
@@ -109,15 +112,18 @@ const CANONICAL_SCRIPTS = {
 
 /** inlines `bun run <script>` so a step delegated to a sibling script still counts */
 const expand = (body: string, scripts: Record<string, string>, seen: ReadonlySet<string> = new Set()): string =>
-	body.replace(/\bbun run ([\w:-]+)/g, (call, name: string) => {
+	body.replaceAll(/\bbun run ([\w:-]+)/g, (call, name: string) => {
 		const target = scripts[name]
 		return target === undefined || seen.has(name) ? call : expand(target, scripts, new Set([...seen, name]))
 	})
 
 const auditScripts = (role: Row['role'], scripts: Record<string, string> = {}) => [
+	...(scripts.check === undefined
+		? []
+		: ['scripts.check: shadows `bun check`, so `chk` would run it instead of the typecheck']),
 	...R.entries(coreSteps(role === 'workspace' ? ROOT_SKIP : undefined)).flatMap(([name, steps]) => {
 		const script = scripts[name]
-		if (script === undefined) return [`scripts.${name}: missing`]
+		if (script === undefined) return `scripts.${name}: missing`
 		const body = expand(script, scripts)
 		return steps
 			.filter((step) => !body.includes(step))
@@ -127,7 +133,7 @@ const auditScripts = (role: Row['role'], scripts: Record<string, string> = {}) =
 		const body = scripts[name]
 		return body === undefined || body === canonical
 			? []
-			: [`scripts.${name}: ${show(body)} (canonical ${show(canonical)})`]
+			: `scripts.${name}: ${show(body)} (canonical ${show(canonical)})`
 	}),
 ]
 
@@ -140,8 +146,11 @@ const HOISTED = /^\s*linker\s*=\s*"hoisted"/m
 
 const auditPackage = (manifest: Manifest, role: Row['role'], files: { tsconfig?: string; bunfig?: string }) => {
 	// devDependencies only: a runtime entry is the code's own import, e.g. an extension bundling prettier
-	const redundant = PROVIDED.filter((name) => manifest.devDependencies?.[name])
+	const redundant = PROVIDED.filter((name) => Object.hasOwn(manifest.devDependencies ?? {}, name))
 	return [
+		...(role === 'member' || Object.hasOwn(manifest.devDependencies ?? {}, self.name)
+			? []
+			: [`devDependencies lacks ${self.name}`]),
 		...redundant.map((name) => `redundant dependency: ${name} (provided by ${self.name})`),
 		...(role !== 'workspace' || HOISTED.test(files.bunfig ?? '')
 			? []
@@ -155,11 +164,11 @@ const auditPackage = (manifest: Manifest, role: Row['role'], files: { tsconfig?:
 
 const ESLINT_FILES = ['eslint.config.mjs', 'eslint.config.js', 'eslint.config.ts', 'eslint.config.cjs'] as const
 
-const auditDir = async (repo: string, dir: string, lint: Cell): Promise<Row> => {
-	const root = `${GIT}/${repo}/${dir}`
+const auditDirectory = async (repository: string, directory: string, lint: Cell): Promise<Row> => {
+	const root = `${GIT}/${repository}/${directory}`
 	const manifestRaw = (await read(`${root}/package.json`)) ?? '{}'
 	const manifest = manifestSchema.parse(JSON.parse(manifestRaw))
-	const role = dir === '.' ? (manifest.workspaces ? 'workspace' : 'single') : 'member'
+	const role = directory === '.' ? (manifest.workspaces ? 'workspace' : 'single') : 'member'
 	const tsconfigRaw = await read(`${root}/tsconfig.json`)
 	const parent =
 		tsconfigRaw &&
@@ -172,8 +181,8 @@ const auditDir = async (repo: string, dir: string, lint: Cell): Promise<Row> => 
 		? { path: eslint.name, residue: auditEslint(eslint.raw), notes: [], raw: eslint.raw }
 		: undefined
 	return {
-		repo,
-		dir,
+		repo: repository,
+		dir: directory,
 		role,
 		preset,
 		cells: {
@@ -197,14 +206,16 @@ const auditDir = async (repo: string, dir: string, lint: Cell): Promise<Row> => 
 }
 
 export const audit = async () => {
-	const [repos, scans] = await Promise.all([findConsumers(), loadScans()])
+	const [repos, scans] = await Promise.all([findPackageRepos(), loadScans()])
 	const rows = await Promise.all(
-		repos.sort().map(async (repo) => {
-			const scan = scans.find((x) => x.repo === repo)
+		repos.toSorted().map(async (repository) => {
+			const scan = scans.find((x) => x.repo === repository)
 			return Promise.all(
-				(await manifests(repo))
-					.sort()
-					.map((path) => auditDir(repo, dirname(path), dirname(path) === '.' && scan ? lintCell(scan) : undefined)),
+				(await manifests(repository))
+					.toSorted()
+					.map((path) =>
+						auditDirectory(repository, dirname(path), dirname(path) === '.' && scan ? lintCell(scan) : undefined),
+					),
 			)
 		}),
 	)
@@ -217,11 +228,12 @@ export const label = (row: Row) => (row.dir === '.' ? row.repo : `${row.repo}/${
 
 const tag = (row: Row) => `${row.role} · ${row.preset}`
 
+const mark = (cell: Cell) =>
+	cell === undefined ? '·' : isClean(cell) ? `✓${cell.notes.length ? '*' : ''}` : `✗${cell.residue.length}`
+
 export const formatText = (rows: Row[]) => {
 	const width = Math.max(...rows.map((row) => label(row).length))
 	const tagWidth = Math.max(...rows.map((row) => tag(row).length))
-	const mark = (cell: Cell) =>
-		cell === undefined ? '·' : isClean(cell) ? `✓${cell.notes.length ? '*' : ''}` : `✗${cell.residue.length}`
 	const table = rows.map((row) =>
 		[label(row).padEnd(width), tag(row).padEnd(tagWidth), ...KINDS.map((kind) => mark(row.cells[kind]).padEnd(9))].join(
 			'  ',

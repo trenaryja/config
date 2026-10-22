@@ -41,10 +41,10 @@ const scanSchema = z.object({
 })
 type Scan = z.infer<typeof scanSchema>
 
-const findEslint = (dir: string): string | undefined => {
-	const bin = join(dir, 'node_modules/.bin/eslint')
+const findEslint = (directory: string): string | undefined => {
+	const bin = join(directory, 'node_modules/.bin/eslint')
 	if (existsSync(bin)) return bin
-	return dir === dirname(dir) ? undefined : findEslint(dirname(dir))
+	return directory === dirname(directory) ? undefined : findEslint(dirname(directory))
 }
 
 /** RSS of a process and every descendant */
@@ -66,7 +66,7 @@ const treeRss = (root: number) => {
 	return {
 		kb: R.sumBy(
 			rows.filter(([pid = 0]) => tree.has(pid)),
-			([, , rss = 0]) => rss,
+			(row) => row[2] ?? 0,
 		),
 		pids: [...tree],
 	}
@@ -78,9 +78,9 @@ type Batch = { cwd: string; files: readonly string[]; working: boolean; flags: r
 const runEslint = async ({ cwd, files, working, flags }: Batch, capKb: number) => {
 	const bin = findEslint(cwd)
 	if (!bin) throw new Error(`${cwd}: no node_modules/.bin/eslint at or above it; run bun install there`)
-	// consumers install from npm -> `working` preloads a swap so their eslint loads this repo's eslint.js
-	const preload = working ? ['--preload', `${import.meta.dir}/swap-eslint.ts`] : []
-	const proc = Bun.spawn(['bun', ...preload, bin, '--format', 'json', '--no-warn-ignored', ...flags, ...files], {
+	// consumers install from npm -> `working` swaps in this repo's eslint.js; node, as consumers' eslint shebang runs: bun peaks 2.8GB where node peaks 1.6GB (health/apps/web)
+	const swap = working ? ['--import', `${import.meta.dir}/swap-eslint.ts`] : []
+	const proc = Bun.spawn(['node', ...swap, bin, '--format', 'json', '--no-warn-ignored', ...flags, ...files], {
 		cwd,
 		stdout: 'pipe',
 		stderr: 'ignore',
@@ -110,25 +110,28 @@ const lintSplit = async (batch: Batch): Promise<{ results: z.infer<typeof lintRe
 const UNLINTED = '<unlinted>'
 
 /** each eslint config lints from its own dir: the config reads tsconfig, .gitignore and package.json from cwd */
-const lint = async (repo: string, working: boolean, ...flags: string[]) => {
-	const root = `${GIT}/${repo}`
+const lint = async (repository: string, working: boolean, ...flags: string[]) => {
+	const root = `${GIT}/${repository}`
 	const tracked = Bun.spawnSync(['git', 'ls-files'], { cwd: root }).stdout.toString().split('\n').filter(Boolean)
-	const configDirs = R.sortBy(
-		tracked.filter((file) => /(^|\/)eslint\.config\.[cm]?[jt]s$/.test(file)).map((file) => dirname(file)),
-		[(dir) => dir.length, 'desc'],
+	const configDirectories = R.sortBy(
+		tracked.filter((file) => /(?:^|\/)eslint\.config\.[cm]?[jt]s$/.test(file)).map((file) => dirname(file)),
+		[(directory) => directory.length, 'desc'],
 	)
-	const owner = (file: string) => configDirs.find((dir) => dir === '.' || file.startsWith(`${dir}/`))
+	const owner = (file: string) =>
+		configDirectories.find((directory) => directory === '.' || file.startsWith(`${directory}/`))
 	const hits: Hit[] = []
-	for (const dir of configDirs) {
-		const cwd = join(root, dir)
-		const files = tracked.filter((file) => LINTED.test(file) && owner(file) === dir).map((file) => relative(dir, file))
+	for (const directory of configDirectories) {
+		const cwd = join(root, directory)
+		const files = tracked
+			.filter((file) => LINTED.test(file) && owner(file) === directory)
+			.map((file) => relative(directory, file))
 		const { results, unlinted } = files.length
 			? await lintSplit({ cwd, files, working, flags })
 			: { results: [], unlinted: [] }
 		hits.push(
 			...results.flatMap((result) =>
 				result.messages.map((message): Hit => ({
-					repo,
+					repo: repository,
 					file: relative(root, result.filePath),
 					line: message.line,
 					rule: message.ruleId ?? '<directive>',
@@ -136,8 +139,8 @@ const lint = async (repo: string, working: boolean, ...flags: string[]) => {
 				})),
 			),
 			...unlinted.map((file): Hit => ({
-				repo,
-				file: join(dir, file),
+				repo: repository,
+				file: join(directory, file),
 				line: 0,
 				rule: UNLINTED,
 				message: `over ${CAP_KB.file} KB RSS`,
@@ -148,11 +151,11 @@ const lint = async (repo: string, working: boolean, ...flags: string[]) => {
 }
 
 // Most consumers not green today -> raw counts are noise; only the diff vs the installed config means anything
-const scanRepo = async (repo: string) => ({
-	repo,
-	baseline: await lint(repo, false, '--report-unused-disable-directives'),
+const scanRepository = async (repository: string) => ({
+	repo: repository,
+	baseline: await lint(repository, false, '--report-unused-disable-directives'),
 	// the working config sets noInlineConfig, so this is also every hit a disable was hiding
-	working: await lint(repo, true),
+	working: await lint(repository, true),
 })
 
 export const scan = async (onProgress?: (done: number, total: number) => void) => {
@@ -161,9 +164,9 @@ export const scan = async (onProgress?: (done: number, total: number) => void) =
 	const out: Scan[] = []
 	onProgress?.(0, consumers.length)
 
-	for (const repo of consumers) {
-		const result = await scanRepo(repo)
-		console.log(`  ${repo}: ${result.working.length} live`)
+	for (const repository of consumers) {
+		const result = await scanRepository(repository)
+		console.log(`  ${repository}: ${result.working.length} live`)
 		out.push(result)
 		onProgress?.(out.length, consumers.length)
 	}
