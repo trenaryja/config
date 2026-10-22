@@ -4,7 +4,7 @@ One package for the shared configs. Each config is a thin layer on a well-kept u
 
 ## Toolchain
 
-This package ships every tool its configs need as regular dependencies. Bun hoists them into each consuming repo — do not declare them there:
+This package ships every tool its configs need as regular dependencies. Bun hoists them into each consuming repo — do not declare them there unless the repo's own code imports one (`no-extraneous-dependencies` asks for it):
 
 - `eslint` and its plugins
 - `prettier` and its plugins — for editors; `bun fmt` reads the same config
