@@ -176,6 +176,14 @@ export const loadScans = async () => ((await cache.exists()) ? z.array(scanSchem
 
 export const scannedAt = async () => ((await cache.exists()) ? new Date(cache.lastModified) : undefined)
 
+/** a rule switched on since the scan reads as 0 hits, not as unscanned */
+const freshScans = async () => {
+	if (!(await cache.exists())) throw new Error(`no ${CACHE}; run bun fleet verify scan`)
+	if (Bun.file(`${import.meta.dir}/../eslint.js`).lastModified > cache.lastModified)
+		throw new Error(`${CACHE} predates eslint.js; run bun fleet verify scan`)
+	return loadScans()
+}
+
 const key = (hit: Hit) => `${hit.repo}/${hit.file}:${hit.line}:${hit.rule}`
 
 /** live hits under the working config, `(new)` where the installed one was quiet */
@@ -194,7 +202,7 @@ export const lintCell = (result: Scan): Cell => {
 }
 
 const report = async () => {
-	const data = await loadScans()
+	const data = await freshScans()
 	const baseline = data.flatMap((x) => x.baseline)
 	const after = data.flatMap((x) => x.working)
 	const [beforeKeys, afterKeys] = [new Set(baseline.map(key)), new Set(after.map(key))]
@@ -226,7 +234,7 @@ const report = async () => {
 }
 
 const rule = async (ruleId: string) => {
-	const hits = (await loadScans()).flatMap((x) => x.working).filter((hit) => hit.rule === ruleId)
+	const hits = (await freshScans()).flatMap((x) => x.working).filter((hit) => hit.rule === ruleId)
 	console.log(`## ${ruleId} — ${hits.length} violations with every inline disable ignored\n`)
 	for (const hit of hits) console.log(`  ${hit.repo}/${hit.file}:${hit.line}\n      ${hit.message}`)
 }
