@@ -3,5 +3,6 @@
 	"singleQuote": true,
 	"printWidth": 120,
 	"jsxSingleQuote": true,
-	"useTabs": true
+	"useTabs": true,
+	"plugins": ["prettier-plugin-organize-imports", "prettier-plugin-packagejson", "prettier-plugin-tailwindcss"]
 }
