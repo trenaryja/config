@@ -4,7 +4,20 @@ import { builtinRules } from 'eslint/use-at-your-own-risk'
 import { writeFileSync } from 'node:fs'
 import { defineConfig } from './eslint.js'
 
-const config = defineConfig()
+const config = defineConfig({
+	files: ['eslint.config.mjs'],
+	rules: {
+		// typegen needs every core rule module, and ESLint 10 deprecates this export without a replacement
+		'@typescript-eslint/no-deprecated': [
+			'error',
+			{
+				allow: [
+					{ from: 'file', name: 'builtinRules', path: 'node_modules/eslint/lib/types/use-at-your-own-risk.d.ts' },
+				],
+			},
+		],
+	},
+})
 
 /**
  * eslint-typegen's own `typegen()` is skipped for two of its bugs (2.3.1):

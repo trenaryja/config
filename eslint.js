@@ -19,8 +19,8 @@ import tseslint from 'typescript-eslint'
 /** @template {string} Prefix @typedef {keyof RuleOptions extends infer Id ? Id extends `${Prefix}${infer Name}` ? Name : never : never} Unprefixed */
 /** @template {string} Prefix @typedef {readonly (readonly Unprefixed<Prefix>[])[]} RuleLines */
 
-const TS = ['**/*.?([cm])ts', '**/*.?([cm])tsx']
-const JS = ['**/*.?([cm])js', '**/*.jsx']
+/** JS too: base tsconfig sets allowJs and checkJs, so the project service types it and every typed rule runs */
+const SOURCE = ['**/*.?([cm])[jt]s?(x)']
 
 /**
  * a monorepo member linting itself reads its repo's .gitignore, not a missing `./.gitignore`
@@ -36,10 +36,10 @@ const gitignoreFrom = (directory) => {
 
 /** classic runtime (`jsx: react`) reads `React`; under react-jsx an `import React` is unused, yet by default any JSX counts as using it */
 const jsxPragma = () => {
-	const path = ts.findConfigFile(process.cwd(), ts.sys.fileExists)
+	const path = ts.findConfigFile(process.cwd(), (file) => ts.sys.fileExists(file))
 	if (!path) return null
 	const options = ts.parseJsonConfigFileContent(
-		ts.readConfigFile(path, ts.sys.readFile).config,
+		ts.readConfigFile(path, (file) => ts.sys.readFile(file)).config,
 		ts.sys,
 		dirname(path),
 	).options
@@ -110,13 +110,13 @@ const unicornCoveredByTsc = [
 	'require-proxy-trap-boolean-return',
 ]
 
-/** @type {RuleLines<''>} in TS, tsc or a type-aware @typescript-eslint twin reports these; JS keeps them */
+/** @type {RuleLines<''>} tsc or a type-aware @typescript-eslint twin reports these */
 const coreTypedTwins = [
 	['no-fallthrough', 'valid-typeof', 'use-isnan', 'no-delete-var', 'no-unsafe-optional-chaining'],
 	['no-constant-condition', 'no-constant-binary-expression', 'no-async-promise-executor'],
 ]
 
-/** @type {RuleLines<'unicorn/'>} in TS, a type-aware @typescript-eslint twin reports these with the type in hand; JS keeps them */
+/** @type {RuleLines<'unicorn/'>} a type-aware @typescript-eslint twin reports these with the type in hand */
 const unicornTypedTwins = [
 	['no-unnecessary-boolean-comparison', 'no-useless-coercion', 'no-unnecessary-await', 'no-this-assignment'],
 	['no-static-only-class', 'prefer-string-starts-ends-with', 'no-nonstandard-builtin-properties'],
@@ -150,7 +150,7 @@ const unicornAgainstHouseStyle = [
 ]
 
 const unicornRules = /** @satisfies {RuleOptions} */ ({
-	...severity('off', [...unicornLayout, ...unicornCoveredByTsc], 'unicorn/'),
+	...severity('off', [...unicornLayout, ...unicornCoveredByTsc, ...unicornTypedTwins.flat()], 'unicorn/'),
 	'unicorn/logical-assignment-operators': 'off', // its `??=` is a React Compiler bail-out
 	'unicorn/no-null': 'off', // React renders and JSON carries null
 	'unicorn/filename-case': 'off', // components are PascalCase.tsx beside kebab-case modules
@@ -175,9 +175,13 @@ const unicornRules = /** @satisfies {RuleOptions} */ ({
 const notUnderscores = { regex: '^_+$', match: false }
 const underscoreOk = /** @type {const} */ ({ filter: notUnderscores, leadingUnderscore: 'allow' })
 
+/** @param {unknown} value @returns {value is Record<string, unknown>} */
+const isRecord = (value) => typeof value === 'object' && value !== null
+
 /** @template {string} [Plugin=never] @param {readonly Override<Plugin>[]} overrides */
 export const defineConfig = (...overrides) => {
 	const gitignore = gitignoreFrom(process.cwd())
+	/** @type {unknown} */
 	const manifest = existsSync('package.json') ? JSON.parse(readFileSync('package.json', 'utf8')) : {}
 	return [
 		...(gitignore ? [includeIgnoreFile(gitignore)] : []),
@@ -196,11 +200,10 @@ export const defineConfig = (...overrides) => {
 		tseslint.configs.base,
 		...[...tseslint.configs.strictTypeChecked, ...tseslint.configs.stylisticTypeChecked].map((config) => ({
 			...config,
-			files: TS,
+			files: SOURCE,
 		})),
-		{ ...tseslint.configs.eslintRecommended, files: JS }, // base tsconfig sets checkJs: tsc reports these in JS too
 		{
-			files: TS,
+			files: SOURCE,
 			languageOptions: { parserOptions: { projectService: true, jsxPragma: jsxPragma() } },
 			rules: /** @satisfies {RuleOptions} */ ({
 				...severity('error', typeScript, '@typescript-eslint/'),
@@ -232,7 +235,10 @@ export const defineConfig = (...overrides) => {
 		deMorgan.configs.recommended,
 		importX.recommended,
 		importX.typescript,
-		...('next' in { ...manifest.dependencies, ...manifest.devDependencies } ? [next.configs['core-web-vitals']] : []),
+		...(isRecord(manifest) &&
+		[manifest.dependencies, manifest.devDependencies].some((deps) => isRecord(deps) && Object.hasOwn(deps, 'next'))
+			? [next.configs['core-web-vitals']]
+			: []),
 		{
 			settings: {
 				// eslint's shebang runs Node: without `bun: true`, bare 'bun' resolves to @types/bun and no-extraneous-dependencies flags it
@@ -244,6 +250,7 @@ export const defineConfig = (...overrides) => {
 				...severity('error', core.flat(), ''),
 				...severity('error', imports, 'import-x/'),
 				...severity('off', coveredByTsc, 'import-x/'),
+				...severity('off', coreTypedTwins.flat(), ''),
 				'import-x/no-duplicates': 'off', // prettier's organize-imports merges them
 				'regexp/no-useless-escape': 'off', // core no-useless-escape covers strings and regexes
 				'regexp/no-legacy-features': 'off', // no-deprecated and unicorn/no-nonstandard-builtin-properties report `RegExp.$1`
@@ -312,13 +319,6 @@ export const defineConfig = (...overrides) => {
 					{ table: ['grid'], td: ['gridcell'], pre: ['button'] },
 				],
 				'jsx-a11y-x/no-noninteractive-tabindex': ['error', { tags: ['div'] }], // daisyUI's focus collapse is a tabbable <div>; ARIA has no role for "expands on focus"
-			}),
-		},
-		{
-			files: TS,
-			rules: /** @satisfies {RuleOptions} */ ({
-				...severity('off', coreTypedTwins.flat(), ''),
-				...severity('off', unicornTypedTwins.flat(), 'unicorn/'),
 			}),
 		},
 		// Next reads `config.matcher` without running the file, so a `String.raw` tag fails the build
