@@ -262,13 +262,12 @@ const coreRules = /** @satisfies {RuleOptions} */ ({
 	eqeqeq: ['error', 'smart'],
 	curly: ['error', 'multi'],
 	'arrow-body-style': 'error',
-	complexity: ['error', { max: 14, variant: 'modified' }], // a flat dispatch switch counts as 1
+	complexity: ['error', { variant: 'modified' }], // a flat dispatch switch counts as 1
 	'max-depth': 'error',
-	'max-nested-callbacks': ['error', 7],
-	'max-params': ['error', 4],
-	'max-statements': ['error', 40],
+	'max-nested-callbacks': 'error',
+	'max-params': ['error', 4], // library callbacks dictate 4: `String#replace` passes the match plus each group
 	'max-lines-per-function': ['error', 150],
-	'max-lines': ['error', 2500],
+	'max-lines': ['error', 500],
 })
 
 const importRules = /** @satisfies {RuleOptions} */ ({

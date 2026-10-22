@@ -62,7 +62,7 @@ That is the default file in every repo, and `noInlineConfig` ignores every `esli
 As a bandaid until the fix lands here, `defineConfig` appends config objects after its own. Their `rules` are typed against every rule this package ships, options included, so a typo or a bad option fails `tsc`. A plugin registered in `plugins` opens up its own `<name>/*` rules, options unchecked:
 
 ```js
-export default defineConfig({ files: ['scripts/**'], rules: { complexity: ['error', { max: 20 }] } })
+export default defineConfig({ files: ['scripts/**'], rules: { complexity: ['error', { max: 30 }] } })
 ```
 
 ## tsconfig
