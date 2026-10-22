@@ -99,9 +99,9 @@ const NO_SKIP = { fmt: '', eslint: '' }
 /** members own their lint, so turbo can filter and cache it per package; a root that also covered them ran it twice */
 const ROOT_SKIP = { fmt: ` . '!apps' '!packages'`, eslint: ' --ignore-pattern apps --ignore-pattern packages' }
 
-/** extra steps (cargo, tests, codegen) are welcome; a missing core step is drift */
+/** extra steps (cargo, tests, codegen) are welcome; a missing or reordered core step is drift: the formatter runs after eslint's fixes */
 const coreSteps = ({ fmt, eslint } = NO_SKIP) => ({
-	fix: [`bun fmt${fmt}`, `eslint --fix .${eslint}`],
+	fix: [`eslint --fix .${eslint}`, `bun fmt${fmt}`],
 	chk: ['bun check', `bun fmt --check${fmt}`, `eslint . --max-warnings=0${eslint}`],
 })
 
@@ -125,9 +125,15 @@ const auditScripts = (role: Row['role'], scripts: Record<string, string> = {}) =
 		const script = scripts[name]
 		if (script === undefined) return `scripts.${name}: missing`
 		const body = expand(script, scripts)
-		return steps
-			.filter((step) => !body.includes(step))
-			.map((step) => `scripts.${name} lacks \`${step}\`: ${show(script)}`)
+		const missing = steps.filter((step) => !body.includes(step))
+		if (missing.length) return missing.map((step) => `scripts.${name} lacks \`${step}\`: ${show(script)}`)
+		const positions = steps.map((step) => body.indexOf(step))
+		return R.isDeepEqual(
+			positions,
+			positions.toSorted((a, b) => a - b),
+		)
+			? []
+			: `scripts.${name} runs its steps out of order (want ${steps.join(' → ')}): ${show(script)}`
 	}),
 	...R.entries(CANONICAL_SCRIPTS).flatMap(([name, canonical]) => {
 		const body = scripts[name]
