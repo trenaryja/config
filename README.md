@@ -23,7 +23,7 @@ Every repo runs the same two:
 ```json
 {
 	"chk": "bun check && bun fmt --check && eslint . --max-warnings=0",
-	"fix": "bun fmt && eslint --fix ."
+	"fix": "eslint --fix . && bun fmt"
 }
 ```
 
