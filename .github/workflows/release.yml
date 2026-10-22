@@ -2,6 +2,10 @@ name: Release
 
 on:
   workflow_dispatch: # re-run a publish by hand if a release-triggered run failed
+    inputs:
+      dry-run:
+        description: Run every step, but pack instead of publishing
+        type: boolean
   release:
     types: [published]
 
@@ -13,9 +17,13 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }} # the tagged commit, not the branch head; empty on dispatch -> the dispatched ref
+      - uses: actions/setup-node@v7
         with:
           node-version: 24 # npm >= 11.5.1 required for trusted publishing
           registry-url: https://registry.npmjs.org
-      - run: npm publish
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile # npm publish runs `prepare`, which generates the shipped rule types
+      - run: npm publish ${{ inputs.dry-run && '--dry-run' || '' }}
