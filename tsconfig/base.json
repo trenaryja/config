@@ -22,5 +22,17 @@
 		"noImplicitOverride": true,
 		"allowUnreachableCode": false // the default only greys it out in the editor
 	},
-	"exclude": ["${configDir}/**/dist", "${configDir}/**/target"] // built .ts and .d.ts output would be checked as source
+	// generated output would be checked as source; TS globs already skip dot-folders (.next, .build, .svelte-kit)
+	"exclude": [
+		"${configDir}/**/dist",
+		"${configDir}/**/target",
+		"${configDir}/**/build",
+		"${configDir}/**/out",
+		"${configDir}/**/coverage",
+		"${configDir}/**/test-results",
+		"${configDir}/**/playwright-report",
+		"${configDir}/**/blob-report",
+		"${configDir}/**/storybook-static",
+		"${configDir}/**/DerivedData"
+	]
 }

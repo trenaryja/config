@@ -64,7 +64,7 @@ That is the whole file in every repo, permanently: `defineConfig` takes no optio
 
 ## tsconfig
 
-- `base` — Bun CLIs and internal packages; keeps build output (`dist`, `target`) out of `tsc`
+- `base` — Bun CLIs and internal packages; keeps build and test output out of `tsc`
 - `workspace` — monorepo roots; `base` that also leaves `apps` and `packages` to their own tsconfig
 - `node` — code hosted by Node (VS Code, Raycast); swaps Bun's globals for Node's
 - `dom` — adds the DOM; for browser code that isn't a framework app

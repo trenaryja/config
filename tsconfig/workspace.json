@@ -2,8 +2,16 @@
 	"$schema": "https://json.schemastore.org/tsconfig",
 	"extends": "./base.json",
 	"exclude": [
-		"${configDir}/**/dist", // restated: a child's exclude replaces base's
+		"${configDir}/**/dist", // restated from base: a child's exclude replaces it
 		"${configDir}/**/target",
+		"${configDir}/**/build",
+		"${configDir}/**/out",
+		"${configDir}/**/coverage",
+		"${configDir}/**/test-results",
+		"${configDir}/**/playwright-report",
+		"${configDir}/**/blob-report",
+		"${configDir}/**/storybook-static",
+		"${configDir}/**/DerivedData",
 		"${configDir}/apps", // workspace members own their tsconfig
 		"${configDir}/packages"
 	]
