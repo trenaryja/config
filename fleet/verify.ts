@@ -150,8 +150,8 @@ const lint = async (repository: string, working: boolean, ...flags: string[]) =>
 const scanRepository = async (repository: string) => ({
 	repo: repository,
 	baseline: await lint(repository, false, '--report-unused-disable-directives'),
-	// the working config sets noInlineConfig, so this is also every hit a disable was hiding
-	working: await lint(repository, true),
+	// --no-inline-config: also every hit a disable is hiding
+	working: await lint(repository, true, '--no-inline-config'),
 })
 
 export const scan = async (onProgress?: (done: number, total: number) => void) => {
