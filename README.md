@@ -60,7 +60,7 @@ import { defineConfig } from '@trenaryja/config/eslint'
 export default defineConfig()
 ```
 
-That is the default file in every repo, and `noInlineConfig` ignores every `eslint-disable` comment. A rule that fires wrongly across the fleet is tuned here; a hit anywhere else is fixed in the code.
+That is the default file in every repo. A rule that fires wrongly across the fleet is tuned here; a hit anywhere else is fixed in the code. An `eslint-disable` comment is the escape hatch: it names its rules (`unicorn/no-abusive-eslint-disable`), fails the lint once it suppresses nothing, and `bun fleet verify report` counts the hits disables hide across the fleet.
 
 As a bandaid until the fix lands here, `defineConfig` appends config objects after its own. Their `rules` are typed against every rule this package ships, options included, so a typo or a bad option fails `tsc`. A plugin registered in `plugins` opens up its own `<name>/*` rules, options unchecked:
 

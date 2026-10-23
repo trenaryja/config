@@ -182,7 +182,6 @@ const unicornRules = /** @satisfies {RuleOptions} */ ({
 	'unicorn/prefer-query-selector': 'off', // `getElementById` types HTMLElement; its fix `querySelector('#id')` types Element (TS2339 on `.style`)
 	'unicorn/require-css-escape': 'off', // flags constant attribute names and numeric ids alike; its fix on a number fails tsc (TS2345)
 	'unicorn/no-break-in-nested-loop': 'off', // flags a `switch` case's `break` inside a loop, the usual argv parser
-	'unicorn/no-abusive-eslint-disable': 'off', // noInlineConfig already ignores and reports every disable comment
 })
 
 const notUnderscores = { regex: '^_+$', match: false }
@@ -190,7 +189,10 @@ const underscoreOk = /** @type {const} */ ({ filter: notUnderscores, leadingUnde
 
 const typeScriptRules = /** @satisfies {RuleOptions} */ ({
 	...severity('error', typeScriptOn, '@typescript-eslint/'),
-	'@typescript-eslint/ban-ts-comment': ['error', { 'ts-expect-error': true }],
+	'@typescript-eslint/ban-ts-comment': [
+		'error',
+		{ minimumDescriptionLength: 10, 'ts-ignore': 'allow-with-description', 'ts-nocheck': 'allow-with-description' },
+	], // escape hatch with a reason; banned, reaching it takes an eslint-disable
 	'@typescript-eslint/class-literal-property-style': ['error', 'getters'],
 	'@typescript-eslint/consistent-generic-constructors': ['error', 'constructor'],
 	'@typescript-eslint/consistent-type-assertions': ['error', { assertionStyle: 'never' }], // `as const` and `satisfies` stay allowed
@@ -318,8 +320,8 @@ export const defineConfig = (...overrides) => {
 				'**/target/', // Cargo output; cmake litters it with `compiler_depend.ts` stubs that are not TypeScript
 			],
 		},
-		// a fix belongs in the code or in this file, never in a comment
-		{ linterOptions: { noInlineConfig: true } },
+		// a disable is the escape hatch; one that suppresses nothing fails the lint so the count only falls
+		{ linterOptions: { reportUnusedDisableDirectives: 'error', reportUnusedInlineConfigs: 'error' } },
 		{ languageOptions: { globals: { ...globals.browser, ...globals.node } } },
 		js.configs.recommended,
 		tseslint.configs.base,
