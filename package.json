@@ -30,7 +30,7 @@
 	"scripts": {
 		"chk": "bun check && bun fmt --check && eslint . --max-warnings=0 && bun fleet verify redundant",
 		"dev": "bun fleet --serve",
-		"fix": "eslint --fix . && bun fmt",
+		"fix": "eslint --fix .; bun fmt",
 		"get-latest": "bun update --latest --interactive",
 		"prepare": "eslint --print-config eslint.js > /dev/null",
 		"reinstall": "rm -rf node_modules bun.lock && bun install",

@@ -23,9 +23,11 @@ Every repo runs the same two:
 ```json
 {
 	"chk": "bun check && bun fmt --check && eslint . --max-warnings=0",
-	"fix": "eslint --fix . && bun fmt"
+	"fix": "eslint --fix .; bun fmt"
 }
 ```
+
+`fix` chains with `;`, not `&&`: a hit eslint can't fix would otherwise skip `bun fmt` and leave its half-applied fixes unformatted.
 
 A workspace root appends `. '!apps' '!packages'` to each `bun fmt` and `--ignore-pattern apps --ignore-pattern packages` to each `eslint`: members run their own, so turbo filters and caches them per package.
 
