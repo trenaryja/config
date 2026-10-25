@@ -29,6 +29,7 @@
 	],
 	"scripts": {
 		"chk": "bun check && bun fmt --check && eslint . --max-warnings=0 && bun fleet verify redundant",
+		"ci": "bun run chk",
 		"dev": "bun fleet --serve",
 		"fix": "eslint --fix .; bun fmt",
 		"get-latest": "bun update --latest --interactive",

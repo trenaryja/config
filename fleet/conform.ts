@@ -46,6 +46,8 @@ const renovateRules = async (root: string) =>
 type Rule = Awaited<ReturnType<typeof renovateRules>>[number]
 
 const CHK = ['bun check', 'bun fmt --check', 'eslint ', '--max-warnings=0']
+/** a build inlined rather than delegated to a `build` script */
+const BUILD = /\b(?:next|vite|ray|turbo run) build\b|\btsdown\b/
 const DISABLE = /eslint-disable|@ts-(?:ignore|expect-error|nocheck)/
 const GENERATED = /\bgenerated\b|do not edit/i
 const CODE = /\.[cm]?[jt]sx?$/
@@ -139,6 +141,12 @@ const runs = (text: string) =>
 		.map(([, name = '']) => name)
 		.toArray()
 
+const BANNED_SCRIPTS = {
+	check: 'a check script survives beside chk',
+	test: 'a test script makes bun run test and bun test differ; chk or ci runs bun test',
+	'vscode:prepublish': 'vscode:prepublish makes vsce run npm',
+}
+
 const scriptFindings = (scripts: Readonly<Record<string, string>>, linted: boolean, isRoot: boolean) => {
 	/** bin's chk delegates to `bun run lint`: what a script runs is the standard, not how it's spelled */
 	const expand = (text: string, depth = 0): string =>
@@ -147,6 +155,10 @@ const scriptFindings = (scripts: Readonly<Record<string, string>>, linted: boole
 			: text.replaceAll(/bun run (\S+)/g, (call, name: string) => expand(scripts[name] ?? call, depth + 1))
 	const chk = scripts.chk && expand(scripts.chk)
 	const fix = scripts.fix && expand(scripts.fix)
+	const builds = (text: string, seen: ReadonlySet<string>): boolean =>
+		runs(text).some(
+			(name) => name === 'build' || (!seen.has(name) && builds(scripts[name] ?? '', new Set([...seen, name]))),
+		)
 	return [
 		...(linted && (isRoot || chk) && CHK.some((part) => !chk?.includes(part))
 			? [`chk ${JSON.stringify(scripts.chk)} lacks one of ${CHK.join(', ')}`]
@@ -154,8 +166,15 @@ const scriptFindings = (scripts: Readonly<Record<string, string>>, linted: boole
 		...(linted && (isRoot || fix) && !/eslint --fix [^;]*; bun fmt/.test(fix ?? '')
 			? [`fix ${JSON.stringify(scripts.fix)} isn't eslint --fix then bun fmt`]
 			: []),
-		...(scripts.check ? ['a check script survives beside chk'] : []),
-		...(scripts['vscode:prepublish'] ? ['vscode:prepublish makes vsce run npm'] : []),
+		...(isRoot && !scripts.ci?.startsWith('bun run chk')
+			? [`ci ${JSON.stringify(scripts.ci ?? '')} doesn't start with bun run chk`]
+			: []),
+		...(scripts.chk && (builds(scripts.chk, new Set()) || BUILD.test(chk ?? ''))
+			? [`chk ${JSON.stringify(scripts.chk)} builds; the build belongs in ci`]
+			: []),
+		...R.entries(BANNED_SCRIPTS)
+			.filter(([name]) => R.keys(scripts).includes(name))
+			.map(([, message]) => message),
 	]
 }
 
@@ -237,12 +256,9 @@ const repoLevel = async (root: string, files: readonly string[]): Promise<Findin
 			files.filter((file) => file.startsWith('.github/workflows/')).map(async (file) => read(root, file)),
 		)
 	).join('\n')
-	const { scripts } = scriptsSchema.parse(await Bun.file(join(root, 'package.json')).json())
-	/** `bun run test` in CI counts when test itself runs chk */
-	const reaches = (names: readonly string[], seen: ReadonlySet<string>): boolean =>
-		names.some(
-			(name) => name === 'chk' || (!seen.has(name) && reaches(runs(scripts[name] ?? ''), new Set([...seen, name]))),
-		)
+	const turbo = z
+		.object({ tasks: z.object({ chk: z.object({ dependsOn: z.array(z.string()).default([]) }).optional() }) })
+		.safeParse(JSON.parse((await read(root, 'turbo.json')) || '{"tasks":{}}'))
 	const code = await Promise.all(
 		files
 			.filter((file) => CODE.test(file))
@@ -263,7 +279,12 @@ const repoLevel = async (root: string, files: readonly string[]): Promise<Findin
 		...(renovate.includes('github>trenaryja/config')
 			? []
 			: [{ path: 'renovate.json', message: 'missing or not extending github>trenaryja/config' }]),
-		...(reaches(runs(workflows), new Set()) ? [] : [{ path: '.github/workflows', message: 'no workflow runs chk' }]),
+		...(workflows.includes('uses: trenaryja/config/.github/workflows/ci.yml@')
+			? []
+			: [{ path: '.github/workflows', message: "no workflow calls trenaryja/config's ci.yml" }]),
+		...(turbo.data?.tasks.chk?.dependsOn.some((task) => task.includes('build'))
+			? [{ path: 'turbo.json', message: 'chk depends on a build; the build belongs in ci' }]
+			: []),
 		...disables,
 		...audit.hits
 			.map((hit) => ({ ...hit, file: hit.file.slice(root.length + 1) }))

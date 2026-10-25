@@ -18,14 +18,30 @@ Not included: `react` + `@types/react`. Their majors move together, so each repo
 
 ### Scripts
 
-Every repo runs the same two:
+Every repo runs the same three:
 
 ```json
 {
 	"chk": "bun check && bun fmt --check && eslint . --max-warnings=0",
+	"ci": "bun run chk && bun run build",
 	"fix": "eslint --fix .; bun fmt"
 }
 ```
+
+`chk` is the local gate, so it never builds; builds and tests that need one go in `ci`, after `bun run chk`. CI runs only `ci`, through the shared workflow:
+
+```yaml
+name: CI
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  ci:
+    uses: trenaryja/config/.github/workflows/ci.yml@main
+```
+
+No `test` script: `bun test` is Bun's runner and ignores it, so `bun run test` and `bun test` would mean different things. `chk` or `ci` runs `bun test` directly.
 
 `fix` chains with `;`, not `&&`: a hit eslint can't fix would otherwise skip `bun fmt` and leave its half-applied fixes unformatted.
 
@@ -112,4 +128,4 @@ Renovate reads this from GitHub — no publish involved. `renovate.json`:
 
 Before releasing, `bun fleet verify scan` then `bun fleet verify report` lint every sibling repo that consumes this package against the working `eslint.js`. `bun run release` picks the version from the conventional commits, then makes the tag and the GitHub release with their changelog, authenticated by your `gh` login. Publishing that release triggers `release.yml`, which publishes to npm with provenance via [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) — no token, no secret. The trusted publisher is configured in the npm package settings: repo `trenaryja/config`, workflow `release.yml`.
 
-`bun fleet verify conform [repo…]` checks a consumer against the fleet's standards: the `chk` and `fix` scripts, the React Compiler wherever React builds, a Next app reading env only through `env.ts`, the shared Renovate preset, a workflow that runs `chk`, no disables or comment-audit cuts, nothing unused, and every dep at its latest version. A dep that a peer range, `engines` or a Renovate `allowedVersions` keeps behind latest prints as a hold and passes; an `allowedVersions` that no peer range or `engines` backs fails, so a hold ends when its reason does.
+`bun fleet verify conform [repo…]` checks a consumer against the fleet's standards: the `chk` and `fix` scripts, the React Compiler wherever React builds, a Next app reading env only through `env.ts`, the shared Renovate preset, `ci` starting with `bun run chk`, a `chk` that never builds, no `test` script, a workflow calling the shared `ci.yml`, no disables or comment-audit cuts, nothing unused, and every dep at its latest version. A dep that a peer range, `engines` or a Renovate `allowedVersions` keeps behind latest prints as a hold and passes; an `allowedVersions` that no peer range or `engines` backs fails, so a hold ends when its reason does.
