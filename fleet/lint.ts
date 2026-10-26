@@ -1,14 +1,13 @@
 import { dirname, join, relative } from 'node:path'
 import * as R from 'remeda'
 import { z } from 'zod'
+import { findUp } from '../tren/repo.ts'
 import type { Cell } from './audit.ts'
 import { autofix } from './autofix.ts'
-import { conform } from './conform.ts'
-import { deps } from './deps.ts'
-import { findConsumers, findUp, GIT } from './discover.ts'
+import { findConsumers, GIT } from './discover.ts'
 import { redundant } from './redundant.ts'
 
-const CACHE = '/tmp/eslint-verify.json'
+const CACHE = '/tmp/eslint-fleet-lint.json'
 
 /**
  * Type-aware lint holds the whole program: one trivial ui file costs ~1.3 GB, one googleapis file ~3.2 GB (measured 2026-10-18)
@@ -108,7 +107,7 @@ const lintSplit = async (batch: Batch): Promise<{ results: z.infer<typeof lintRe
 const UNLINTED = '<unlinted>'
 
 /** each eslint config lints from its own dir: the config reads tsconfig, .gitignore and package.json from cwd */
-const lint = async (repository: string, working: boolean, ...flags: string[]) => {
+const lintRepository = async (repository: string, working: boolean, ...flags: string[]) => {
 	const root = `${GIT}/${repository}`
 	const tracked = Bun.spawnSync(['git', 'ls-files'], { cwd: root }).stdout.toString().split('\n').filter(Boolean)
 	const configDirectories = R.sortBy(
@@ -151,9 +150,9 @@ const lint = async (repository: string, working: boolean, ...flags: string[]) =>
 // Most consumers not green today -> raw counts are noise; only the diff vs the installed config means anything
 const scanRepository = async (repository: string) => ({
 	repo: repository,
-	baseline: await lint(repository, false, '--report-unused-disable-directives'),
+	baseline: await lintRepository(repository, false, '--report-unused-disable-directives'),
 	// --no-inline-config: also every hit a disable is hiding
-	working: await lint(repository, true, '--no-inline-config'),
+	working: await lintRepository(repository, true, '--no-inline-config'),
 })
 
 export const scan = async (onProgress?: (done: number, total: number) => void) => {
@@ -181,9 +180,9 @@ export const scannedAt = async () => ((await cache.exists()) ? new Date(cache.la
 
 /** a rule switched on since the scan reads as 0 hits, not as unscanned */
 const freshScans = async () => {
-	if (!(await cache.exists())) throw new Error(`no ${CACHE}; run bun fleet verify scan`)
+	if (!(await cache.exists())) throw new Error(`no ${CACHE}; run bun fleet lint scan`)
 	if (Bun.file(`${import.meta.dir}/../eslint.js`).lastModified > cache.lastModified)
-		throw new Error(`${CACHE} predates eslint.js; run bun fleet verify scan`)
+		throw new Error(`${CACHE} predates eslint.js; run bun fleet lint scan`)
 	return loadScans()
 }
 
@@ -242,17 +241,12 @@ const rule = async (ruleId: string) => {
 	for (const hit of hits) console.log(`  ${hit.repo}/${hit.file}:${hit.line}\n      ${hit.message}`)
 }
 
-export const verify = async ([command, argument, ...more]: readonly string[]) => {
+export const lint = async ([command, argument, ...more]: readonly string[]) => {
 	const rest = [argument, ...more].filter((x) => x !== undefined)
 	if (command === 'scan') await scan()
 	else if (command === 'report') await report()
 	else if (command === 'rule' && argument) await rule(argument)
 	else if (command === 'autofix') await autofix(rest)
 	else if (command === 'redundant') await redundant()
-	else if (command === 'deps') await deps(rest)
-	else if (command === 'conform') await conform(rest)
-	else
-		console.log(
-			'usage: bun fleet verify scan | report | rule <ruleId> | autofix [repo…] | redundant | deps [repo…] | conform [repo…]',
-		)
+	else console.log('usage: bun fleet lint scan | report | rule <ruleId> | autofix [repo…] | redundant')
 }

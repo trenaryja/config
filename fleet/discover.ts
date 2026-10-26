@@ -50,22 +50,9 @@ export const findConsumers = async () => {
 	return found.filter((name) => name !== null)
 }
 
-export const findUp = (directory: string, path: string): string | undefined => {
-	const found = join(directory, path)
-	if (existsSync(found)) return found
-	return directory === dirname(directory) ? undefined : findUp(dirname(directory), path)
-}
-
 /** a repo name under ~/Git, or an absolute path such as a worktree */
 export const repositoryRoot = (repository: string) => {
 	const root = isAbsolute(repository) ? repository : join(GIT, repository)
 	if (!existsSync(root)) throw new Error(`${root} doesn't exist: name a repo under ${GIT} or pass an absolute path`)
 	return root
 }
-
-/** repo-relative paths git tracks or would add: untracked but not ignored counts */
-export const trackedFiles = (root: string) =>
-	Bun.spawnSync(['git', 'ls-files', '--cached', '--others', '--exclude-standard'], { cwd: root })
-		.stdout.toString()
-		.split('\n')
-		.filter(Boolean)

@@ -2,7 +2,8 @@ import { $ } from 'bun'
 import { existsSync, symlinkSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import * as R from 'remeda'
-import { findConsumers, findUp, GIT, manifests } from './discover.ts'
+import { findUp } from '../tren/repo.ts'
+import { findConsumers, GIT, manifests } from './discover.ts'
 
 const ROOT = '/tmp/fleet-autofix'
 const TSC = `${dirname(import.meta.dir)}/node_modules/.bin/tsc`

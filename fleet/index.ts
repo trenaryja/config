@@ -1,7 +1,8 @@
 import { audit, formatText } from './audit.ts'
+import { doctor } from './doctor.ts'
 import { formatGit, gitAudit } from './git.ts'
 import { formatHtml } from './html.ts'
-import { scan, scannedAt, verify } from './verify.ts'
+import { lint, scan, scannedAt } from './lint.ts'
 
 const [command, ...rest] = Bun.argv.slice(2)
 let scanning: string | undefined
@@ -12,7 +13,8 @@ const startScan = () => {
 	void scan((done, total) => (scanning = `${done}/${total}`)).finally(() => (scanning = undefined))
 }
 
-if (command === 'verify') await verify(rest)
+if (command === 'lint') await lint(rest)
+else if (command === 'doctor') await doctor(rest)
 else if (command === 'git') console.log(formatGit(await gitAudit()))
 else if (command === '--json') console.log(JSON.stringify({ audit: await audit(), git: await gitAudit() }, null, 2))
 else if (command === '--serve') {
@@ -33,5 +35,7 @@ else if (command === '--serve') {
 	})
 	console.log(`fleet audit re-runs on every load: ${server.url.href}`)
 } else if (command)
-	console.log('usage: bun fleet [git | --json | --serve | verify scan | verify report | verify rule <ruleId>]')
+	console.log(
+		'usage: bun fleet [doctor [repo…] | git | lint <scan | report | rule <ruleId> | autofix [repo…] | redundant> | --json | --serve]',
+	)
 else console.log(formatText(await audit()))

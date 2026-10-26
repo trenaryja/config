@@ -19,22 +19,27 @@
 		"./tsconfig/*": "./tsconfig/*.json",
 		"./package.json": "./package.json"
 	},
+	"bin": {
+		"tren": "./tren/index.ts"
+	},
 	"files": [
 		"eslint.js",
 		"eslint.d.ts",
 		"eslint-rules.gen.d.ts",
+		"lib",
 		"prettier.json",
 		"release-it.json",
-		"tsconfig"
+		"default.json",
+		"tsconfig",
+		"tren",
+		"!tren/**/node_modules"
 	],
 	"scripts": {
-		"chk": "bun check && bun fmt --check && eslint . --max-warnings=0 && bun fleet verify redundant",
-		"ci": "bun run chk",
+		"chk": "bun tren/index.ts chk && bun fleet lint redundant",
+		"ci": "bun tren/index.ts ci",
 		"dev": "bun fleet --serve",
-		"fix": "eslint --fix .; bun fmt",
-		"get-latest": "bun update --latest --interactive",
-		"prepare": "eslint --print-config eslint.js > /dev/null",
-		"reinstall": "rm -rf node_modules bun.lock && bun install",
+		"fix": "bun typegen.ts && bun tren/index.ts fix",
+		"prepare": "bun typegen.ts",
 		"release": "GITHUB_TOKEN=$(gh auth token) release-it"
 	},
 	"prettier": "@trenaryja/config/prettier",
@@ -57,13 +62,13 @@
 		"prettier-plugin-packagejson": "3.0.2",
 		"prettier-plugin-tailwindcss": "0.8.1",
 		"release-it": "21.1.1",
+		"remeda": "2.53.0",
 		"typescript": "6.0.3",
-		"typescript-eslint": "8.72.0"
+		"typescript-eslint": "8.72.0",
+		"zod": "4.6.7"
 	},
 	"devDependencies": {
-		"eslint-typegen": "2.3.1",
-		"remeda": "2.53.0",
-		"zod": "4.6.7"
+		"eslint-typegen": "2.3.1"
 	},
 	"publishConfig": {
 		"access": "public",

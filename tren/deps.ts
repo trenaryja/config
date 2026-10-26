@@ -1,47 +1,37 @@
 import { readFileSync, statSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import * as R from 'remeda'
-import { z } from 'zod'
-import { findConsumers, findUp, repositoryRoot, trackedFiles } from './discover.ts'
+import self from '../package.json' with { type: 'json' }
+import {
+	captures,
+	type Ctx,
+	depsOf,
+	findUp,
+	jsonObject,
+	type Manifest,
+	readJson,
+	readManifest,
+	readText,
+	within,
+} from './repo.ts'
 
-const manifestSchema = z.object({
-	dependencies: z.record(z.string(), z.string()).default({}),
-	devDependencies: z.record(z.string(), z.string()).default({}),
-	peerDependencies: z.record(z.string(), z.string()).default({}),
-	peerDependenciesMeta: z.record(z.string(), z.object({ optional: z.boolean().default(false) })).default({}),
-	scripts: z.record(z.string(), z.string()).default({}),
-	files: z.array(z.string()).default([]),
-	bin: z.union([z.string(), z.record(z.string(), z.string())]).optional(),
-	types: z.unknown().optional(),
-	typings: z.unknown().optional(),
-	exports: z.unknown().optional(),
-	version: z.string().optional(),
-	engines: z.record(z.string(), z.string()).default({}),
-})
-type Manifest = z.infer<typeof manifestSchema>
+const SHIPPED = new Set<string>(R.keys(self.dependencies))
 
-export const readManifest = async (path: string) => {
-	const parsed = manifestSchema.safeParse(await Bun.file(path).json())
-	if (!parsed.success) throw new Error(`${path}: ${z.prettifyError(parsed.error)}`)
-	return parsed.data
-}
-
-const SHIPPED = new Set(R.keys((await readManifest(`${import.meta.dir}/../package.json`)).dependencies))
-
-/** code and config only: kindle's epubs alone took 3.5s and name no package; a lockfile or package.json naming one isn't usage */
+/** code and config only: kindle's epubs alone took 3.5s and name no package; a package.json naming one isn't usage */
 const SOURCE =
 	/(?:\.(?:[cm]?[jt]sx?|jsonc?|css|scss|html|vue|svelte|astro|ya?ml|toml|sh|mdx)|(?:^|\/)(?:Dockerfile|Makefile))$/
-const NOT_USAGE = /(?:^|\/)(?:package|package-lock)\.json$/
 
 const quoted = (name: string) => new RegExp(String.raw`(['"])${RegExp.escape(name)}(?:/[^'"]*)?\1`)
 const word = (name: string, flags = '') => new RegExp(String.raw`(?<![\w@/-])${RegExp.escape(name)}(?![\w-])`, flags)
 
-/** with its install directory, which bin paths are relative to */
-export const installed = async (from: string, dep: string) => {
+const installed = async (from: string, dep: string) => {
 	const path = findUp(from, `node_modules/${dep}/package.json`)
 	return path ? { ...(await readManifest(path)), directory: dirname(path) } : undefined
 }
 type Installed = NonNullable<Awaited<ReturnType<typeof installed>>>
+
+export const installedDeps = async (directory: string, names: readonly string[]) =>
+	R.fromEntries(await Promise.all(names.map(async (name) => [name, await installed(directory, name)] as const)))
 
 const ownTypes = (pkg: Manifest) =>
 	Boolean(pkg.types ?? pkg.typings) || JSON.stringify(pkg.exports ?? {}).includes('"types"')
@@ -51,7 +41,6 @@ const bins = (dep: string, pkg: Installed) =>
 		([name, path]) => ({ name, path: join(pkg.directory, path) }),
 	)
 
-/** `@types/foo__bar` types `@foo/bar` */
 const typedPackage = (dep: string) => {
 	const name = dep.slice('@types/'.length)
 	return name.includes('__') ? `@${name.replace('__', '/')}` : name
@@ -65,7 +54,7 @@ const resolveFile = (path: string) =>
 		statSync(candidate, { throwIfNoEntry: false })?.isFile(),
 	)
 
-/** `starts` plus every file they statically import within their own package; a lazy `import()` isn't followed */
+/** a lazy `import()` isn't followed */
 const loadedText = (starts: readonly string[]) => {
 	const seen = new Set(starts)
 	const queue = [...seen]
@@ -84,20 +73,26 @@ const loadedText = (starts: readonly string[]) => {
 	return texts.join('\n')
 }
 
-/** the files behind every specifier the repo imports from `dependent` */
+const resolved = (specifier: string, from: string) => {
+	try {
+		return [Bun.resolveSync(specifier, from)]
+	} catch {
+		return []
+	}
+}
+
 const importedModules = (directory: string, haystack: string, dependent: string) =>
-	R.unique(
-		haystack
-			.matchAll(new RegExp(`['"](${RegExp.escape(dependent)}(?:/[^'"]*)?)['"]`, 'g'))
-			.map(([, specifier]) => specifier ?? dependent)
-			.toArray(),
-	).flatMap((specifier) => {
-		try {
-			return Bun.resolveSync(specifier, directory)
-		} catch {
-			return []
-		}
-	})
+	R.unique(captures(haystack, new RegExp(`['"](${RegExp.escape(dependent)}(?:/[^'"]*)?)['"]`, 'g'))).flatMap(
+		(specifier) => resolved(specifier, directory),
+	)
+
+/** a package preset named by `extends` (release-it, tsconfig) loads plugins the repo itself never names */
+const extendedPresets = async (directory: string, text: string) =>
+	Promise.all(
+		R.unique(captures(text, /"extends":\s*"([^".][^"]*)"/g))
+			.flatMap((specifier) => resolved(specifier, directory))
+			.map((path) => readText(path)),
+	)
 
 type Context = {
 	directory: string
@@ -147,37 +142,43 @@ const buildOutput = async (packageDirectory: string, entries: readonly string[])
 		)
 	)
 		.flat()
-		.map(async (path) => Bun.file(path).text())
+		.map((path) => Bun.file(path).text())
 
 const checkManifest = async (root: string, manifest: string, files: readonly { path: string; text: string }[]) => {
 	const directory = dirname(manifest)
 	const packageDirectory = join(root, directory)
-	const raw = z.record(z.string(), z.unknown()).parse(await Bun.file(join(root, manifest)).json())
+	const raw = jsonObject.parse(await readJson(join(root, manifest)))
 	const pkg = await readManifest(join(root, manifest))
-	const versions = { ...pkg.dependencies, ...pkg.devDependencies }
-	// turbo orders builds by workspace deps, imported or not
-	const declared = R.keys(versions).filter((dep) => !versions[dep]?.startsWith('workspace:'))
-	const installs = R.fromEntries(
-		await Promise.all(declared.map(async (dep) => [dep, await installed(packageDirectory, dep)] as const)),
+	const versions = depsOf(pkg)
+	/** turbo orders builds by workspace deps, imported or not; config's own dependencies are what it ships */
+	const declared = R.keys(versions).filter(
+		(dep) =>
+			!versions[dep]?.startsWith('workspace:') && (pkg.name !== self.name || !Object.hasOwn(pkg.dependencies, dep)),
 	)
-	const peerEdges = R.entries(installs).flatMap(([dependent, x]) =>
-		x
-			? R.keys(x.peerDependencies).map((peer) => ({
+	const installs = await installedDeps(packageDirectory, declared)
+	const peerEdges = R.entries(installs).flatMap(([dependent, install]) =>
+		install
+			? R.keys(install.peerDependencies).map((peer) => ({
 					dependent,
 					peer,
-					optional: Boolean(x.peerDependenciesMeta[peer]?.optional),
+					optional: Boolean(install.peerDependenciesMeta[peer]?.optional),
 				}))
 			: [],
 	)
-	const own = files.filter((file) => directory === '.' || file.path.startsWith(`${directory}/`))
-	const haystack = [
+	const own = files.filter((file) => within(directory, file.path))
+	const repoText = [
 		...own.map((file) => file.text),
 		// config kept in package.json (postcss, prettier) names packages too
 		JSON.stringify(R.omit(raw, ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'])),
 		// JSX compiles to an import nobody writes
 		own.some((file) => /\.[jt]sx$/.test(file.path)) ? "'react/jsx-runtime'" : '',
+		// the React Compiler targeting 17 or 18 compiles to imports of its runtime polyfill
+		own.some((file) => /react-?compiler/i.test(file.text) && /target:\s*['"]1[78]['"]/.test(file.text))
+			? "'react-compiler-runtime'"
+			: '',
 		...(await Promise.all(await buildOutput(packageDirectory, pkg.files))),
 	].join('\n')
+	const haystack = [repoText, ...(await extendedPresets(packageDirectory, repoText))].join('\n')
 	const context = {
 		directory: packageDirectory,
 		haystack,
@@ -191,9 +192,9 @@ const checkManifest = async (root: string, manifest: string, files: readonly { p
 			(edges) => edges.map((edge) => edge.dependent),
 		),
 		installs,
-		runBins: R.entries(installs).flatMap(([dep, x]) =>
-			x
-				? bins(dep, x)
+		runBins: R.entries(installs).flatMap(([dep, install]) =>
+			install
+				? bins(dep, install)
 						.filter((bin) => word(bin.name).test(haystack))
 						.map((bin) => bin.path)
 				: [],
@@ -202,44 +203,20 @@ const checkManifest = async (root: string, manifest: string, files: readonly { p
 	const findings = await Promise.all(
 		declared.map(async (dep) => {
 			const why = await reason(dep, context)
-			return why ? `${dep} ${why}` : undefined
+			return why ? { check: 'unused', path: manifest, message: `${dep} ${why}` } : undefined
 		}),
 	)
 	return findings.filter((finding) => finding !== undefined)
 }
 
-/** findings per package directory, repo-relative */
-export const unusedDeps = async (repository: string) => {
-	const root = repositoryRoot(repository)
-	const tracked = trackedFiles(root)
+export const unusedDeps = async ({ root, files: tracked, manifests }: Ctx) => {
 	const files = await Promise.all(
 		tracked
-			.filter((path) => SOURCE.test(path) && !NOT_USAGE.test(path))
+			.filter((path) => SOURCE.test(path) && basename(path) !== 'package.json')
 			.map(async (path) => ({
 				path,
-				text: await Bun.file(join(root, path))
-					.text()
-					.catch(() => ''),
+				text: await readText(join(root, path)),
 			})),
 	)
-	const manifests = tracked.filter((path) => path === 'package.json' || path.endsWith('/package.json'))
-	return R.fromEntries(
-		await Promise.all(
-			manifests.map(async (manifest) => [dirname(manifest), await checkManifest(root, manifest, files)] as const),
-		),
-	)
-}
-
-/** declared packages a repo doesn't use, by import, bin, peer or global types; repos are paths under ~/Git or absolute, default every consumer */
-export const deps = async (repositories: readonly string[]) => {
-	const targets = repositories.length > 0 ? repositories : await findConsumers()
-	const findings = (
-		await Promise.all(targets.map(async (repository) => ({ repository, byDirectory: await unusedDeps(repository) })))
-	).flatMap(({ repository, byDirectory }) =>
-		R.entries(byDirectory).flatMap(([directory, lines]) =>
-			lines.map((line) => `${join(repository, directory, 'package.json')}: ${line}`),
-		),
-	)
-	for (const finding of findings) console.log(finding)
-	if (findings.length > 0) process.exitCode = 1
+	return (await Promise.all(manifests.map(async (manifest) => checkManifest(root, manifest, files)))).flat()
 }

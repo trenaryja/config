@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path'
 import ts from 'typescript'
 import tseslint from 'typescript-eslint'
 
+import { GENERATED } from './lib/generated-globs.js'
 /** @import { RuleOptions } from './eslint-rules.gen.js' */
 /** @import { Override } from './eslint.d.ts' */
 /** @template {string} Prefix @typedef {keyof RuleOptions extends infer Id ? Id extends `${Prefix}${infer Name}` ? Name : never : never} Unprefixed */
@@ -196,6 +197,12 @@ const typeScriptRules = /** @satisfies {RuleOptions} */ ({
 	'@typescript-eslint/class-literal-property-style': ['error', 'getters'],
 	'@typescript-eslint/consistent-generic-constructors': ['error', 'constructor'],
 	'@typescript-eslint/consistent-type-assertions': ['error', { assertionStyle: 'never' }], // `as const` and `satisfies` stay allowed
+	'@typescript-eslint/no-deprecated': [
+		'error',
+		{
+			allow: [{ from: 'file', name: 'builtinRules', path: 'node_modules/eslint/lib/types/use-at-your-own-risk.d.ts' }],
+		},
+	], // ESLint 10 deprecates the only list of core rule modules without a replacement
 	'@typescript-eslint/consistent-type-definitions': ['error', 'type'], // `interface` on a published surface invites declaration merging
 	'@typescript-eslint/method-signature-style': ['error', 'property'],
 	'@typescript-eslint/no-empty-object-type': ['error', { allowInterfaces: 'with-single-extends' }],
@@ -313,12 +320,7 @@ export const defineConfig = (...overrides) => {
 	return [
 		...(gitignore ? [includeIgnoreFile(gitignore)] : []),
 		{
-			ignores: [
-				'**/*.gen.*',
-				'**/_generated/', // codegen (Convex) rewritten on every dev run
-				'**/*-env.d.ts', // regenerated on build
-				'**/target/', // Cargo output; cmake litters it with `compiler_depend.ts` stubs that are not TypeScript
-			],
+			ignores: GENERATED,
 		},
 		// a disable is the escape hatch; one that suppresses nothing fails the lint so the count only falls
 		{ linterOptions: { reportUnusedDisableDirectives: 'error', reportUnusedInlineConfigs: 'error' } },
