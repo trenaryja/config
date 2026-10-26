@@ -2,7 +2,7 @@ import { $ } from 'bun'
 import { existsSync, symlinkSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import * as R from 'remeda'
-import { findConsumers, findEslint, GIT, manifests } from './discover.ts'
+import { findConsumers, findUp, GIT, manifests } from './discover.ts'
 
 const ROOT = '/tmp/fleet-autofix'
 const TSC = `${dirname(import.meta.dir)}/node_modules/.bin/tsc`
@@ -48,7 +48,7 @@ const fix = async (tree: string, directories: readonly string[]) => {
 	)
 	for (const directory of configDirectories) {
 		const cwd = join(tree, directory)
-		const bin = findEslint(cwd)
+		const bin = findUp(cwd, 'node_modules/.bin/eslint')
 		if (!bin) continue
 		// each config reads cwd (gitignore, package.json, tsconfig), so a member's files are fixed from the member
 		const nested = configDirectories.flatMap((other) =>

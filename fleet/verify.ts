@@ -3,7 +3,9 @@ import * as R from 'remeda'
 import { z } from 'zod'
 import type { Cell } from './audit.ts'
 import { autofix } from './autofix.ts'
-import { findConsumers, findEslint, GIT } from './discover.ts'
+import { conform } from './conform.ts'
+import { deps } from './deps.ts'
+import { findConsumers, findUp, GIT } from './discover.ts'
 import { redundant } from './redundant.ts'
 
 const CACHE = '/tmp/eslint-verify.json'
@@ -72,7 +74,7 @@ type Batch = { cwd: string; files: readonly string[]; working: boolean; flags: r
 
 /** `undefined` = killed at the cap */
 const runEslint = async ({ cwd, files, working, flags }: Batch, capKb: number) => {
-	const bin = findEslint(cwd)
+	const bin = findUp(cwd, 'node_modules/.bin/eslint')
 	if (!bin) throw new Error(`${cwd}: no node_modules/.bin/eslint at or above it; run bun install there`)
 	// consumers install from npm -> `working` swaps in this repo's eslint.js; node, as consumers' eslint shebang runs: bun peaks 2.8GB where node peaks 1.6GB (health/apps/web)
 	const swap = working ? ['--import', `${import.meta.dir}/swap-eslint.ts`] : []
@@ -247,5 +249,10 @@ export const verify = async ([command, argument, ...more]: readonly string[]) =>
 	else if (command === 'rule' && argument) await rule(argument)
 	else if (command === 'autofix') await autofix(rest)
 	else if (command === 'redundant') await redundant()
-	else console.log('usage: bun fleet verify scan | report | rule <ruleId> | autofix [repo…] | redundant')
+	else if (command === 'deps') await deps(rest)
+	else if (command === 'conform') await conform(rest)
+	else
+		console.log(
+			'usage: bun fleet verify scan | report | rule <ruleId> | autofix [repo…] | redundant | deps [repo…] | conform [repo…]',
+		)
 }

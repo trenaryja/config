@@ -4,7 +4,7 @@ One package for the shared configs. Each config is a thin layer on a well-kept u
 
 ## Toolchain
 
-This package ships every tool its configs need as regular dependencies. Bun hoists them into each consuming repo — do not declare them there unless the repo's own code imports one (`no-extraneous-dependencies` asks for it):
+This package ships every tool its configs need as regular dependencies. Bun hoists them into each consuming repo — do not declare them there unless the repo's own code imports one (`no-extraneous-dependencies` asks for it). `bun fleet verify deps [repo…]` lists what a repo declares but doesn't need: a tool shipped here that it never imports, or a package nothing imports, runs or loads:
 
 - `eslint` and its plugins
 - `prettier` and its plugins — for editors; `bun fmt` reads the same config
@@ -111,3 +111,5 @@ Renovate reads this from GitHub — no publish involved. `renovate.json`:
 ## Releasing this package
 
 Before releasing, `bun fleet verify scan` then `bun fleet verify report` lint every sibling repo that consumes this package against the working `eslint.js`. `bun run release` picks the version from the conventional commits, then makes the tag and the GitHub release with their changelog, authenticated by your `gh` login. Publishing that release triggers `release.yml`, which publishes to npm with provenance via [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) — no token, no secret. The trusted publisher is configured in the npm package settings: repo `trenaryja/config`, workflow `release.yml`.
+
+`bun fleet verify conform [repo…]` checks a consumer against the fleet's standards: the `chk` and `fix` scripts, the React Compiler wherever React builds, a Next app reading env only through `env.ts`, the shared Renovate preset, a workflow that runs `chk`, no disables or comment-audit cuts, nothing unused, and every dep at its latest version. A dep that a peer range, `engines` or a Renovate `allowedVersions` keeps behind latest prints as a hold and passes; an `allowedVersions` that no peer range or `engines` backs fails, so a hold ends when its reason does.

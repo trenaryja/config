@@ -3,10 +3,11 @@ import * as R from 'remeda'
 import ts from 'typescript'
 import { z } from 'zod'
 import self from '../package.json'
+import { unusedDeps } from './deps.ts'
 import { findPackageRepos, GIT, manifests } from './discover.ts'
 import { lintCell, loadScans } from './verify.ts'
 
-export const KINDS = ['tsconfig', 'eslint', 'package', 'lint'] as const
+export const KINDS = ['tsconfig', 'eslint', 'package', 'deps', 'lint'] as const
 export type Kind = (typeof KINDS)[number]
 
 const versions = z.record(z.string(), z.string()).optional()
@@ -143,34 +144,32 @@ const auditScripts = (role: Row['role'], scripts: Record<string, string> = {}) =
 	}),
 ]
 
-const PROVIDED = R.keys(self.dependencies)
-
 const isNodeHosted = (manifest: Manifest) =>
 	Boolean(manifest.engines?.vscode ?? manifest.dependencies?.['@raycast/api'])
 
 const HOISTED = /^\s*linker\s*=\s*"hoisted"/m
 
-const auditPackage = (manifest: Manifest, role: Row['role'], files: { tsconfig?: string; bunfig?: string }) => {
-	// devDependencies only: a runtime entry is the code's own import, e.g. an extension bundling prettier
-	const redundant = PROVIDED.filter((name) => Object.hasOwn(manifest.devDependencies ?? {}, name))
-	return [
-		...(role === 'member' || Object.hasOwn(manifest.devDependencies ?? {}, self.name)
-			? []
-			: [`devDependencies lacks ${self.name}`]),
-		...redundant.map((name) => `redundant dependency: ${name} (provided by ${self.name})`),
-		...(role !== 'workspace' || HOISTED.test(files.bunfig ?? '')
-			? []
-			: ['bunfig.toml lacks `linker = "hoisted"` (the isolated linker hides the toolchain from the root)']),
-		...(role === 'member' || manifest.prettier === `${self.name}/prettier`
-			? []
-			: [`prettier: ${show(manifest.prettier)}`]),
-		...(files.tsconfig === undefined ? [] : auditScripts(role, manifest.scripts)),
-	]
-}
+const auditPackage = (manifest: Manifest, role: Row['role'], files: { tsconfig?: string; bunfig?: string }) => [
+	...(role === 'member' || Object.hasOwn(manifest.devDependencies ?? {}, self.name)
+		? []
+		: [`devDependencies lacks ${self.name}`]),
+	...(role !== 'workspace' || HOISTED.test(files.bunfig ?? '')
+		? []
+		: ['bunfig.toml lacks `linker = "hoisted"` (the isolated linker hides the toolchain from the root)']),
+	...(role === 'member' || manifest.prettier === `${self.name}/prettier`
+		? []
+		: [`prettier: ${show(manifest.prettier)}`]),
+	...(files.tsconfig === undefined ? [] : auditScripts(role, manifest.scripts)),
+]
 
 const ESLINT_FILES = ['eslint.config.mjs', 'eslint.config.js', 'eslint.config.ts', 'eslint.config.cjs'] as const
 
-const auditDirectory = async (repository: string, directory: string, lint: Cell): Promise<Row> => {
+const auditDirectory = async (
+	repository: string,
+	directory: string,
+	lint: Cell,
+	unused: readonly string[] = [],
+): Promise<Row> => {
 	const root = `${GIT}/${repository}/${directory}`
 	const manifestRaw = (await read(`${root}/package.json`)) ?? '{}'
 	const manifest = manifestSchema.parse(JSON.parse(manifestRaw))
@@ -206,6 +205,7 @@ const auditDirectory = async (repository: string, directory: string, lint: Cell)
 				notes: [],
 				raw: manifestRaw,
 			},
+			deps: { path: 'package.json', residue: [...unused], notes: [], raw: manifestRaw },
 			lint,
 		},
 	}
@@ -216,11 +216,17 @@ export const audit = async () => {
 	const rows = await Promise.all(
 		repos.toSorted().map(async (repository) => {
 			const scan = scans.find((x) => x.repo === repository)
+			const unused = await unusedDeps(repository)
 			return Promise.all(
 				(await manifests(repository))
 					.toSorted()
 					.map((path) =>
-						auditDirectory(repository, dirname(path), dirname(path) === '.' && scan ? lintCell(scan) : undefined),
+						auditDirectory(
+							repository,
+							dirname(path),
+							dirname(path) === '.' && scan ? lintCell(scan) : undefined,
+							unused[dirname(path)],
+						),
 					),
 			)
 		}),
