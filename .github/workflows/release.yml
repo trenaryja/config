@@ -22,7 +22,7 @@ jobs:
           ref: ${{ github.event.release.tag_name }} # the tagged commit, not the branch head; empty on dispatch -> the dispatched ref
       - uses: actions/setup-node@v7
         with:
-          node-version: 24 # npm >= 11.5.1 required for trusted publishing
+          node-version: lts/* # npm >= 11.5.1 required for trusted publishing
           registry-url: https://registry.npmjs.org
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile # npm publish runs `prepare`, which generates the shipped rule types
