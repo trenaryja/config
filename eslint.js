@@ -14,10 +14,10 @@ import { dirname, join } from 'node:path'
 import ts from 'typescript'
 import tseslint from 'typescript-eslint'
 
-import { GENERATED } from './lib/generated-globs.js'
-/** @import { RuleOptions } from './eslint-rules.gen.js' */
+import { GENERATED_GLOBS } from './lib/generated-globs.js'
+/** @import { Rules } from './eslint.js' */
 /** @import { Override } from './eslint.d.ts' */
-/** @template {string} Prefix @typedef {keyof RuleOptions extends infer Id ? Id extends `${Prefix}${infer Name}` ? Name : never : never} Unprefixed */
+/** @template {string} Prefix @typedef {keyof Rules extends infer Id ? Id extends `${Prefix}${infer Name}` ? Name : never : never} Unprefixed */
 /** @template {string} Prefix @typedef {readonly (readonly Unprefixed<Prefix>[])[]} RuleLines */
 
 /** JS too: base tsconfig sets allowJs and checkJs, so the project service types it and every typed rule runs */
@@ -139,7 +139,7 @@ const typeScriptCoveredByTsc = [
 	'no-namespace', // TS1294
 ]
 
-const unicornRules = /** @satisfies {RuleOptions} */ ({
+const unicornRules = /** @satisfies {Rules} */ ({
 	...severity('off', [...unicornLayout, ...unicornCoveredByTsc, ...unicornTypedTwins.flat()], 'unicorn/'),
 	'unicorn/logical-assignment-operators': 'off', // its `??=` is a React Compiler bail-out
 	'unicorn/no-null': 'off', // React renders and JSON carries null
@@ -185,7 +185,7 @@ const unicornRules = /** @satisfies {RuleOptions} */ ({
 const notUnderscores = { regex: '^_+$', match: false }
 const underscoreOk = /** @type {const} */ ({ filter: notUnderscores, leadingUnderscore: 'allow' })
 
-const typeScriptRules = /** @satisfies {RuleOptions} */ ({
+const typeScriptRules = /** @satisfies {Rules} */ ({
 	...severity('error', typeScriptOn, '@typescript-eslint/'),
 	'@typescript-eslint/ban-ts-comment': [
 		'error',
@@ -255,7 +255,7 @@ const typeScriptRules = /** @satisfies {RuleOptions} */ ({
 	],
 })
 
-const coreRules = /** @satisfies {RuleOptions} */ ({
+const coreRules = /** @satisfies {Rules} */ ({
 	...severity('error', coreOn.flat(), ''),
 	...severity('off', coreTypedTwins.flat(), ''),
 	'no-misleading-character-class': 'off', // regexp/no-misleading-unicode-character also checks quantifiers and fixes
@@ -275,19 +275,19 @@ const coreRules = /** @satisfies {RuleOptions} */ ({
 	'max-lines': ['error', 500],
 })
 
-const importRules = /** @satisfies {RuleOptions} */ ({
+const importRules = /** @satisfies {Rules} */ ({
 	...severity('error', importsOn, 'import-x/'),
 	...severity('off', importCoveredByTsc, 'import-x/'),
 	'import-x/no-duplicates': 'error', // not prefer-inline: its fix writes invalid `import x, type { Y }`
 })
 
-const regexpRules = /** @satisfies {RuleOptions} */ ({
+const regexpRules = /** @satisfies {Rules} */ ({
 	'regexp/no-useless-escape': 'off', // core no-useless-escape covers strings and regexes
 	'regexp/no-legacy-features': 'off', // no-deprecated and unicorn/no-nonstandard-builtin-properties report `RegExp.$1`
 	'regexp/no-invisible-character': 'off', // unicorn/prefer-escaped-irregular-whitespace reports it in every literal
 })
 
-const jsxRules = /** @satisfies {RuleOptions} */ ({
+const jsxRules = /** @satisfies {Rules} */ ({
 	'react-hooks/todo': 'error', // the only rule that reports React Compiler bail-outs (try/finally, for await, import())
 	...severity('error', a11yBeyondStrict, 'jsx-a11y-x/'),
 	'jsx-a11y-x/alt-text': ['error', { img: ['Image'] }], // also check next/image
@@ -316,7 +316,7 @@ export const defineConfig = (...overrides) => {
 	return [
 		...(gitignore ? [includeIgnoreFile(gitignore)] : []),
 		{
-			ignores: GENERATED,
+			ignores: GENERATED_GLOBS,
 		},
 		// a disable is the escape hatch; one that suppresses nothing fails the lint so the count only falls
 		{ linterOptions: { reportUnusedDisableDirectives: 'error', reportUnusedInlineConfigs: 'error' } },

@@ -1,6 +1,5 @@
 import next from '@next/eslint-plugin-next'
 import { flatConfigsToPlugins, pluginsToRulesDTS } from 'eslint-typegen/core'
-import { builtinRules } from 'eslint/use-at-your-own-risk'
 import { writeFileSync } from 'node:fs'
 import { defineConfig } from './eslint.js'
 
@@ -10,7 +9,6 @@ import { defineConfig } from './eslint.js'
  * - it emits unicorn/name-replacements' `BooleanObject` twice, so a consumer with `skipLibCheck: false` fails TS2374
  */
 const plugins = await flatConfigsToPlugins([
-	{ plugins: { '': { rules: Object.fromEntries(builtinRules) } } },
 	...defineConfig(),
 	{ plugins: { '@next/next': next } }, // this repo has no `next` dependency, so defineConfig() leaves the plugin out; consumers still need its rule types
 ])
