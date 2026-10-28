@@ -156,7 +156,6 @@ const unicornRules = /** @satisfies {RuleOptions} */ ({
 	'unicorn/require-array-sort-compare': 'off', // @typescript-eslint's twin reads the element type, so string arrays pass
 	'unicorn/name-replacements': 'off', // a dictionary flags `idx` as hard as `res`; whether a short name has one reading depends on context
 	'unicorn/prefer-await': 'off', // a `.then().catch()` arrow beats a try block, and try/finally is a React Compiler bail-out
-	'unicorn/no-top-level-side-effects': 'off', // fires on every `export default defineConfig()`
 	'unicorn/no-top-level-assignment-in-function': 'off', // its fix is `state.x =`, the same module state behind an object
 	'unicorn/no-non-function-verb-prefix': 'off', // commands are values named for their action (`getApproval = defineCommand(…)`), and `EditForm` is a component
 	'unicorn/no-exports-in-scripts': 'off', // blind to the `if (import.meta.main)` guard Bun scripts export behind
@@ -164,16 +163,14 @@ const unicornRules = /** @satisfies {RuleOptions} */ ({
 	'unicorn/no-process-exit': 'off', // CLI kits and `bun scripts/x.ts` exit outside a shebang file
 	'unicorn/prefer-switch': 'off', // a `break` per case outgrows the else-if chain it replaces
 	'unicorn/prefer-simple-condition-first': 'off', // reordering skips side effects and narrowing, so each hit is a hand audit
-	'unicorn/prefer-includes': 'off', // `.some((x) => x === y)` -> `.includes(y)` fails tsc on a literal-typed array; @typescript-eslint's twin covers `indexOf`
 	'unicorn/prefer-array-index-of': 'off', // `findIndex((x) => x === y)` -> `indexOf(y)` fails tsc the same way
 	'unicorn/no-array-reduce': 'off', // its fix unrolls a seedless reduce into `let x;`, an implicit any (TS7034)
 	'unicorn/no-useless-undefined': ['error', { checkArrowFunctionBody: false }], // `.catch(() => undefined)` -> `() => {}` widens the promise to `T | void`
 	'unicorn/prefer-global-this': 'off', // under @types/bun, `globalThis.addEventListener` drops WindowEventMap, so its fix leaves handlers a bare `Event`
-	'unicorn/prefer-ternary': 'off', // folds early-return guards into ternaries, nesting them
+	'unicorn/prefer-ternary': 'off', // folds a guard and the return after it into one ternary
 	'unicorn/prefer-combined-guards': 'off', // merges guards into one condition, side-effecting awaits included
 	'unicorn/prefer-includes-over-repeated-comparisons': 'off', // `x === -1 || x === 0` -> `[-1, 0].includes(x)` drops the narrowing, and `.includes` on a literal-typed array fails tsc
 	'unicorn/prefer-number-coercion': 'off', // its fix turns `Number.parseFloat('16px')` (16) into `Number('16px')` (NaN)
-	'unicorn/prefer-default-parameters': 'off', // `color || 'currentColor'` also replaces `''`; a default parameter doesn't
 	'unicorn/no-unreadable-for-of-expression': 'off', // flags readable ones: `of xs ?? []`, `of new Set(ids)`, `of await files()`
 	'unicorn/prefer-toggle-attribute': 'off', // its fix sets `''`, dropping `x` from `setAttribute(name, x)`
 	'unicorn/prefer-observer-apis': 'off', // a virtualized grid reads scrollTop on scroll; no observer reports scroll position
