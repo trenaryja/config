@@ -57,12 +57,12 @@ No `test` script: `bun test` is Bun's runner and ignores it, so `bun run test` a
 
 ### TypeScript 6 for the API
 
-`typescript` stays on 6.x for typescript-eslint, editors and `next build`; the TypeScript rule in `default.json` holds it there and says why. Typechecks run TS 7 through `bun check`.
+`typescript` stays on 6.x for typescript-eslint, editors and `next build`; the TypeScript rule in `renovate/base.json` holds it there and says why. Typechecks run TS 7 through `bun check`.
 
 Exit, once that rule's condition is met:
 
 1. Bump `typescript` to `^7`.
-2. Delete the TypeScript rule in `default.json`.
+2. Delete the TypeScript rule in `renovate/base.json`.
 3. Release once.
 
 ## eslint
@@ -119,7 +119,7 @@ In `package.json`:
 Renovate reads this from GitHub — no publish involved. `renovate.json`:
 
 ```json
-{ "extends": ["github>trenaryja/config"] }
+{ "extends": ["github>trenaryja/config//renovate/base"] }
 ```
 
 ## release-it

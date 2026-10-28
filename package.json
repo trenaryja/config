@@ -29,7 +29,7 @@
 		"lib",
 		"prettier.json",
 		"release-it.json",
-		"default.json",
+		"renovate",
 		"tsconfig",
 		"tren",
 		"!tren/**/node_modules"
