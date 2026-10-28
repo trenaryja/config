@@ -195,7 +195,6 @@ const typeScriptRules = /** @satisfies {RuleOptions} */ ({
 		{ minimumDescriptionLength: 10, 'ts-ignore': 'allow-with-description', 'ts-nocheck': 'allow-with-description' },
 	], // escape hatch with a reason; banned, reaching it takes an eslint-disable
 	'@typescript-eslint/class-literal-property-style': ['error', 'getters'],
-	'@typescript-eslint/consistent-generic-constructors': ['error', 'constructor'],
 	'@typescript-eslint/consistent-type-assertions': ['error', { assertionStyle: 'never' }], // `as const` and `satisfies` stay allowed
 	'@typescript-eslint/no-deprecated': [
 		'error',
@@ -204,7 +203,7 @@ const typeScriptRules = /** @satisfies {RuleOptions} */ ({
 		},
 	], // ESLint 10 deprecates the only list of core rule modules without a replacement
 	'@typescript-eslint/consistent-type-definitions': ['error', 'type'], // `interface` on a published surface invites declaration merging
-	'@typescript-eslint/method-signature-style': ['error', 'property'],
+	'@typescript-eslint/method-signature-style': 'error',
 	'@typescript-eslint/no-empty-object-type': ['error', { allowInterfaces: 'with-single-extends' }],
 	'@typescript-eslint/no-extraneous-class': ['error', { allowWithDecorator: true }],
 	'@typescript-eslint/prefer-nullish-coalescing': ['error', { ignorePrimitives: { string: true } }],
@@ -218,7 +217,7 @@ const typeScriptRules = /** @satisfies {RuleOptions} */ ({
 		{ ignoreArrowShorthand: true, ignoreVoidOperator: true },
 	],
 	'@typescript-eslint/non-nullable-type-assertion-style': 'off', // its fix is `!`, which no-non-null-assertion forbids
-	'@typescript-eslint/require-array-sort-compare': ['error', { ignoreStringArrays: true }],
+	'@typescript-eslint/require-array-sort-compare': 'error',
 	'@typescript-eslint/no-empty-function': ['error', { allow: ['arrowFunctions'] }], // `() => {}` is the no-op
 	'@typescript-eslint/prefer-promise-reject-errors': ['error', { allowThrowingAny: true, allowThrowingUnknown: true }], // a `.catch((error: unknown) => …)` rethrows what it caught; `signal.reason` is any
 	'@typescript-eslint/no-generated-empty-object-type': 'off', // `Record<never, X>` is the deliberate empty default; no-empty-object-type still bans a written `{}`
@@ -326,7 +325,6 @@ export const defineConfig = (...overrides) => {
 		{ linterOptions: { reportUnusedDisableDirectives: 'error', reportUnusedInlineConfigs: 'error' } },
 		{ languageOptions: { globals: { ...globals.browser, ...globals.node } } },
 		js.configs.recommended,
-		tseslint.configs.base,
 		...[...tseslint.configs.strictTypeChecked, ...tseslint.configs.stylisticTypeChecked].map((config) => ({
 			...config,
 			files: SOURCE,
