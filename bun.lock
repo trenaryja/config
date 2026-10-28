@@ -7,7 +7,7 @@
       "dependencies": {
         "@eslint/js": "10.0.1",
         "@next/eslint-plugin-next": "16.4.3",
-        "@types/bun": "1.4.4",
+        "@types/bun": "^1.4.4",
         "eslint": "10.13.0",
         "eslint-import-resolver-typescript": "4.4.5",
         "eslint-plugin-de-morgan": "2.3.0",
@@ -21,10 +21,10 @@
         "prettier-plugin-organize-imports": "4.3.0",
         "prettier-plugin-packagejson": "3.0.3",
         "prettier-plugin-tailwindcss": "0.8.1",
-        "remeda": "2.57.0",
-        "typescript": "6.0.3",
+        "remeda": "^2.57.0",
+        "typescript": "^6.0.3",
         "typescript-eslint": "8.72.1",
-        "zod": "4.6.7",
+        "zod": "^4.6.7",
       },
       "devDependencies": {
         "@release-it/conventional-changelog": "12.0.2",
