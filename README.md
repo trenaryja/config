@@ -9,7 +9,6 @@ This package ships every tool its configs need as regular dependencies. Bun hois
 - `eslint` and its plugins
 - `prettier` and its plugins — for editors; `bun fmt` reads the same config
 - `typescript` (see below)
-- `release-it` and `@release-it/conventional-changelog`
 - `@types/bun`
 
 A workspace repo needs `linker = "hoisted"` under `[install]` in its root `bunfig.toml` — Bun's isolated linker, the monorepo default, hoists nothing.
@@ -124,7 +123,7 @@ Renovate reads this from GitHub — no publish involved. `renovate.json`:
 
 ## release-it
 
-`package.json`:
+Optional peers, so only a repo that publishes installs them: `bun add -d release-it @release-it/conventional-changelog`. `package.json`:
 
 ```json
 { "release-it": { "extends": "@trenaryja/config/release-it" } }
