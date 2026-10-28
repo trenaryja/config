@@ -15,7 +15,8 @@
 			"default": "./eslint.js"
 		},
 		"./prettier": "./prettier.json",
-		"./release-it": "./release-it.json",
+		"./release-it": "./release-it/base.json",
+		"./release-it/*": "./release-it/*.json",
 		"./tsconfig/*": "./tsconfig/*.json",
 		"./package.json": "./package.json"
 	},
@@ -28,7 +29,7 @@
 		"eslint-rules.gen.d.ts",
 		"lib",
 		"prettier.json",
-		"release-it.json",
+		"release-it",
 		"renovate",
 		"tsconfig",
 		"tren",
@@ -87,7 +88,7 @@
 		"provenance": true
 	},
 	"release-it": {
-		"extends": "./release-it.json"
+		"extends": "./release-it/base.json"
 	},
 	"trustedDependencies": [
 		"unrs-resolver"
