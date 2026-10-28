@@ -4,7 +4,7 @@ import self from '../package.json' with { type: 'json' }
 const working = new URL('../eslint.js', import.meta.url).href
 const installed = new RegExp(String.raw`/${self.name}/eslint\.js$`)
 
-/** `node --import` this: every installed copy of our eslint.js resolves to the working one, so its imports resolve against this repo's deps as the next release will */
+/** every installed copy of our eslint.js resolves to the working one, so its imports resolve against this repo's deps */
 registerHooks({
 	resolve: (specifier, context, nextResolve) => {
 		const result = nextResolve(specifier, context)

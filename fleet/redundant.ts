@@ -1,17 +1,16 @@
 import { ESLint, type Linter } from 'eslint'
 import { builtinRules } from 'eslint/use-at-your-own-risk'
-import { isDeepStrictEqual } from 'node:util'
 import * as R from 'remeda'
 import { z } from 'zod'
 import { defineConfig } from '../eslint.js'
+import { jsonObject } from '../tren/repo.ts'
 
-/** one probe per file kind a block can scope to */
 const PROBES = ['src/a.ts', 'src/a.tsx', 'src/a.js', 'proxy.ts']
 const SEVERITY: Record<string, number> = { off: 0, warn: 1, error: 2 }
 
 const resolved = z.object({
-	rules: z.record(z.string(), z.unknown()).default({}),
-	settings: z.record(z.string(), z.unknown()).default({}),
+	rules: jsonObject.default({}),
+	settings: jsonObject.default({}),
 })
 
 const normalize = (entry: unknown) => {
@@ -27,27 +26,33 @@ const resolve = async (config: Linter.Config[], file: string) =>
 		),
 	)
 
-/** entries in eslint.js's own blocks that change nothing: already the preset's value, or the rule's default options */
 export const redundant = async () => {
 	const full = defineConfig()
-	// every preset carries a `name` or `plugins`; eslint.js's own rule blocks neither
+	/** every preset carries a `name` or `plugins`; eslint.js's own rule blocks neither */
 	const ours = full.filter((block) => block.rules && !block.name && !block.plugins)
 	const plugins: Record<string, ESLint.Plugin> = R.mergeAll(full.map((block) => block.plugins ?? {}))
 	const defaults = (ruleId: string) => {
 		const slash = ruleId.lastIndexOf('/')
 		const rule =
 			slash === -1 ? builtinRules.get(ruleId) : plugins[ruleId.slice(0, slash)]?.rules?.[ruleId.slice(slash + 1)]
-		return rule?.meta?.defaultOptions
+		/** typescript-eslint's createRule keeps them beside meta, not in it */
+		const options = rule && 'defaultOptions' in rule ? rule.defaultOptions : rule?.meta?.defaultOptions
+		return R.isArray(options) ? options : []
+	}
+	/** a bare severity runs with the rule's default options, so `'error'` and `['error', ...defaults]` resolve alike */
+	const expand = (ruleId: string, entry: unknown) => {
+		const [severity, ...options] = normalize(entry)
+		return severity ? [severity, ...(options.length > 0 ? options : defaults(ruleId))] : [0]
 	}
 	const marked = full.map((block) =>
 		ours.includes(block) ? { ...block, settings: { ...block.settings, [`probe${ours.indexOf(block)}`]: true } } : block,
 	)
 	const findings: string[] = []
 	for (const [index, block] of ours.entries()) {
-		const stripped = full.map((x) => (x === block ? { ...x, rules: {} } : x))
+		const stripped = full.map((candidate) => (candidate === block ? { ...candidate, rules: {} } : candidate))
 		const resolutions = await Promise.all(
 			PROBES.map(async (file) => ({
-				applies: new Set(R.keys((await resolve(marked, file)).settings)).has(`probe${index}`),
+				applies: Object.hasOwn((await resolve(marked, file)).settings, `probe${index}`),
 				full: await resolve(full, file),
 				stripped: await resolve(stripped, file),
 			})),
@@ -55,13 +60,13 @@ export const redundant = async () => {
 		const probes = resolutions.filter((probe) => probe.applies)
 		for (const [ruleId, entry] of R.entries(block.rules ?? {})) {
 			const same = (probe: (typeof probes)[number]) =>
-				isDeepStrictEqual(normalize(probe.full.rules[ruleId]), normalize(probe.stripped.rules[ruleId]))
+				R.isDeepEqual(expand(ruleId, probe.full.rules[ruleId]), expand(ruleId, probe.stripped.rules[ruleId]))
 			if (probes.every(same)) findings.push(`${ruleId}: resolves the same without this entry`)
 			const options = normalize(entry).slice(1)
-			if (options.length > 0 && isDeepStrictEqual(options, defaults(ruleId)))
+			if (options.length > 0 && R.isDeepEqual(options, defaults(ruleId)))
 				findings.push(`${ruleId}: options are the rule's defaults`)
 		}
 	}
 	for (const finding of findings) console.log(finding)
-	if (findings.length > 0) process.exitCode = 1
+	return findings.length > 0 ? 1 : 0
 }

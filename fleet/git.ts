@@ -1,15 +1,21 @@
-import { existsSync, statSync } from 'node:fs'
+import { realpathSync, statSync } from 'node:fs'
+import { relative, resolve } from 'node:path'
 import * as R from 'remeda'
-import { findRepos, GIT } from './discover.ts'
+import { messageOf } from '../tren/repo.ts'
+import { eachRepo, envNumber, findRepos, GIT } from './discover.ts'
+import { block, type Column, detailsOf, formatTable, type Table, type View } from './table.ts'
 
-const run = async (repository: string, ...args: string[]) => {
-	const proc = Bun.spawn(['git', '-C', `${GIT}/${repository}`, ...args], { stdout: 'pipe', stderr: 'ignore' })
-	return (await new Response(proc.stdout).text()).trim()
+/** git's whole verdict: a failure squeezed into '' once passed for a clean repo; GIT_CEILING_DIRECTORIES stops an empty `.git` borrowing a parent's repo */
+const run = async (directory: string, ...args: readonly string[]) => {
+	const proc = Bun.spawn(['git', '-C', directory, ...args], {
+		stderr: 'pipe',
+		env: { ...Bun.env, GIT_CEILING_DIRECTORIES: GIT },
+	})
+	const [out, err, code] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited])
+	return { out: out.trim(), err: err.trim(), code }
 }
 
 const lines = (text: string) => (text ? text.split('\n') : [])
-
-const modified = (path: string) => (existsSync(path) ? statSync(path).mtimeMs : 0)
 
 /**
  * Tracking and a remote copy are independent, and collapsing them hides the state that bites:
@@ -22,95 +28,153 @@ const modified = (path: string) => (existsSync(path) ? statSync(path).mtimeMs : 
 const stateOf = (upstream: string, upstreamExists: boolean, mirrored: boolean) =>
 	upstream ? (upstreamExists ? 'linked' : 'orphaned') : mirrored ? 'unlinked' : 'local'
 
-/** a link git can repair on its own, unlike a branch that was never pushed */
-const BROKEN = new Set(['orphaned', 'unlinked'])
-
-const BRANCH_FORMAT = '%(refname:short)\t%(upstream:short)\t%(committerdate:unix)'
-
-/** `git worktree list --porcelain` emits a blank-line-separated record per checkout */
-const worktreesOf = (porcelain: string) =>
-	new Map(
-		porcelain.split('\n\n').flatMap((record) => {
-			const path = /^worktree (.+)$/m.exec(record)?.[1]
-			const branch = /^branch refs\/heads\/(.+)$/m.exec(record)?.[1]
-			return path && branch ? [[branch, path] as const] : []
-		}),
-	)
+const checkoutsOf = (porcelain: string) =>
+	porcelain.split('\n\n').flatMap((record) => {
+		const path = /^worktree (.+)$/m.exec(record)?.[1]
+		return path ? { path, branch: /^branch refs\/heads\/(.+)$/m.exec(record)?.[1] } : []
+	})
 
 const readRepository = async (repository: string) => {
-	const [porcelain, refs, remotes, stash, committed, worktrees] = await Promise.all([
-		run(repository, 'status', '--porcelain'),
-		run(repository, 'for-each-ref', `--format=${BRANCH_FORMAT}`, 'refs/heads'),
-		run(repository, 'for-each-ref', '--format=%(refname:short)', 'refs/remotes'),
-		run(repository, 'stash', 'list'),
-		run(repository, 'log', '-1', '--format=%ct'),
-		run(repository, 'worktree', 'list', '--porcelain'),
+	const directory = `${GIT}/${repository}`
+	const errors: string[] = []
+	const ok = async (...args: readonly string[]) => {
+		const { out, err, code } = await run(directory, ...args)
+		if (code) errors.push(`git ${args.join(' ')} exited ${code}: ${err}`)
+		return out
+	}
+	const [porcelain, refs, remotes, stash, worktreeList, fetchHead, originHead, current] = await Promise.all([
+		ok('status', '--porcelain'),
+		ok('for-each-ref', '--format=%(refname:short)\t%(upstream:short)\t%(committerdate:unix)', 'refs/heads'),
+		ok('for-each-ref', '--format=%(refname:short)', 'refs/remotes'),
+		ok('stash', 'list'),
+		ok('worktree', 'list', '--porcelain'),
+		ok('rev-parse', '--git-path', 'FETCH_HEAD'),
+		run(directory, 'symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD'),
+		run(directory, 'symbolic-ref', '-q', '--short', 'HEAD'),
 	])
-	const checkouts = worktreesOf(worktrees)
-	const heads = lines(refs).map((line) => {
-		const [name = '', upstream = '', at = '0'] = line.split('\t', 3)
-		return { name, upstream, at: Number(at) * 1000 }
-	})
-	// a repo with no commits has no head to compare against, so the placeholder keeps every query below total
-	const trunk = heads.find((head) => head.name === 'main') ?? heads[0] ?? { name: 'HEAD', upstream: '', at: 0 }
-	const [ahead = 0, behind = 0] = trunk.upstream
-		? (await run(repository, 'rev-list', '--left-right', '--count', `${trunk.name}...${trunk.upstream}`))
-				.split('\t')
-				.map(Number)
-		: []
 	const remoteNames = lines(remotes)
+	const heads = await Promise.all(
+		lines(refs).map(async (line) => {
+			const [name = '', upstream = '', at = '0'] = line.split('\t', 3)
+			const gone = upstream !== '' && !remoteNames.includes(upstream)
+			const [ahead = 0, behind = 0] =
+				upstream && !gone
+					? (await ok('rev-list', '--left-right', '--count', `${name}...${upstream}`)).split('\t').map(Number)
+					: []
+			return { name, upstream, at: Number(at) * 1000, ahead, behind, gone }
+		}),
+	)
+	const trunk = [originHead.out.replace(/^origin\//, ''), 'main', 'master', current.out]
+		.flatMap((name) => heads.filter((head) => head.name === name))
+		.at(0) ??
+		heads[0] ?? { name: 'HEAD', upstream: '', at: 0, ahead: 0, behind: 0, gone: false }
 	const branches = await Promise.all(
 		heads
 			.filter((head) => head.name !== trunk.name)
 			.map(async (head) => {
 				const [unique, mirrors] = await Promise.all([
-					run(repository, 'rev-list', '--count', `${trunk.name}..${head.name}`),
-					run(repository, 'for-each-ref', '--contains', head.name, '--format=%(refname:short)', 'refs/remotes'),
+					ok('rev-list', '--count', `${trunk.name}..${head.name}`),
+					ok('for-each-ref', '--contains', head.name, '--format=%(refname:short)', 'refs/remotes'),
 				])
 				const mirror = lines(mirrors)[0]
 				return {
 					name: head.name,
 					at: head.at,
-					state: stateOf(head.upstream, remoteNames.includes(head.upstream), Boolean(mirror)),
+					ahead: head.ahead,
+					state: stateOf(head.upstream, !head.gone, Boolean(mirror)),
 					mirror,
-					worktree: checkouts.get(head.name),
+					worktree: checkoutsOf(worktreeList).find((checkout) => checkout.branch === head.name)?.path,
 					unique: Number(unique),
+				}
+			}),
+	)
+	// the first record is the main checkout; a linked worktree's own row lists neither it nor itself
+	const [, ...linked] = checkoutsOf(worktreeList)
+	const worktrees = await Promise.all(
+		linked
+			.filter((checkout) => checkout.path !== realpathSync(directory))
+			.map(async (checkout) => {
+				const { out, err, code } = await run(checkout.path, 'status', '--porcelain')
+				if (code) errors.push(`worktree ${checkout.path}: git status exited ${code}: ${err}`)
+				return {
+					path: checkout.path,
+					branch: checkout.branch ?? 'detached',
+					files: lines(out).length,
+					ahead: heads.find((head) => head.name === checkout.branch)?.ahead ?? 0,
 				}
 			}),
 	)
 	return {
 		repo: repository,
 		files: lines(porcelain).length,
-		ahead,
-		behind,
+		ahead: R.sumBy(heads, (head) => head.ahead),
+		behind: trunk.behind,
 		tracked: Boolean(trunk.upstream),
+		gone: trunk.gone,
+		detached: current.code === 1,
 		empty: heads.length === 0,
 		branches,
+		worktrees,
 		renovate: remoteNames.filter((name) => name.includes('/renovate/')).length,
 		stash: lines(stash).length,
-		committed: Number(committed) * 1000,
+		committed: heads.length ? Number(await ok('log', '-1', '--format=%ct')) * 1000 : 0,
 		// git writes FETCH_HEAD on every fetch, so its mtime dates the ahead/behind counts above
-		fetched: modified(`${GIT}/${repository}/.git/FETCH_HEAD`),
+		fetched: statSync(resolve(directory, fetchHead), { throwIfNoEntry: false })?.mtimeMs ?? 0,
+		errors,
 	}
 }
 
 export type RepositoryGit = Awaited<ReturnType<typeof readRepository>>
 
+const failed = (repo: string, error: unknown): RepositoryGit => ({
+	repo,
+	files: 0,
+	ahead: 0,
+	behind: 0,
+	tracked: false,
+	gone: false,
+	detached: false,
+	empty: false,
+	branches: [],
+	worktrees: [],
+	renovate: 0,
+	stash: 0,
+	committed: 0,
+	fetched: 0,
+	errors: [messageOf(error)],
+})
+
 /** every repo under ~/Git, not just config's consumers: `config` and `nas` carry commits too */
-export const gitAudit = async () => Promise.all((await findRepos()).map(readRepository))
+export const gitAudit = async () =>
+	eachRepo(await findRepos(), (repository) =>
+		readRepository(repository).catch((error: unknown) => failed(repository, error)),
+	)
 
-/**
- * The trunk alone, ordered worst first. Branches stay out of it: a local-only `wip/*` or proposal
- * is deliberate, so letting one colour the whole repo made every status read as a problem.
- */
-export const STATUSES = ['new', 'unlinked', 'unpushed', 'dirty', 'clean'] as const
+const dirtyOf = (row: RepositoryGit) => row.files + R.sumBy(row.worktrees, (worktree) => worktree.files)
 
-export const statusOf = (row: RepositoryGit) =>
-	row.empty ? 'new' : row.tracked ? (row.ahead > 0 ? 'unpushed' : row.files > 0 ? 'dirty' : 'clean') : 'unlinked'
+/** a week: Renovate and the owner's pushes land most weeks, so ahead/behind older than that no longer describes origin; FLEET_STALE_DAYS overrides */
+const isStale = (row: RepositoryGit) => Date.now() - row.fetched > envNumber('FLEET_STALE_DAYS', 7) * 864e5
 
-export type Status = (typeof STATUSES)[number]
+/** first match wins and the list order is the sort order: failures lead, `clean` is the fallthrough and sorts last */
+const RULES = [
+	['error', (row) => row.errors.length > 0],
+	['gone', (row) => row.gone],
+	['detached', (row) => row.detached],
+	['new', (row) => row.empty],
+	['unlinked', (row) => !row.tracked],
+	['unpushed', (row) => row.ahead > 0],
+	['dirty', (row) => dirtyOf(row) > 0],
+	['never-fetched', (row) => row.fetched === 0],
+	['stale', isStale],
+] as const satisfies readonly (readonly [string, (row: RepositoryGit) => boolean])[]
 
-const RELATIVE = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+type Status = (typeof RULES)[number][0] | 'clean'
+
+const STATUSES: readonly Status[] = [...RULES.map(([status]) => status), 'clean']
+
+const statusOf = (row: RepositoryGit): Status => RULES.find(([, hit]) => hit(row))?.[0] ?? 'clean'
+
+const statusRank = (row: RepositoryGit) => STATUSES.indexOf(statusOf(row))
 
 const UNITS = [
 	['year', 31_536e6],
@@ -125,72 +189,146 @@ const ago = (at: number) => {
 	if (!at) return '·'
 	const elapsed = Date.now() - at
 	const [unit, size] = UNITS.find(([, span]) => elapsed >= span) ?? (['second', 1e3] as const)
-	return RELATIVE.format(-Math.round(elapsed / size), unit)
+	return new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(-Math.round(elapsed / size), unit)
 }
 
 const digit = (value: number) => (value ? String(value) : '·')
 
-const unpushedOf = (row: RepositoryGit) =>
-	row.empty
-		? 'no commits'
-		: row.tracked
-			? row.behind
-				? `+${row.ahead} -${row.behind}`
-				: digit(row.ahead)
-			: 'no upstream'
+const unpushedOf = (row: RepositoryGit) => {
+	if (row.errors.length) return 'error'
+	if (row.empty) return 'no commits'
+	if (row.gone) return 'upstream gone'
+	if (!row.tracked) return 'no upstream'
+	return row.behind ? `+${row.ahead} -${row.behind}` : digit(row.ahead)
+}
 
-export const unlinkedOf = (row: RepositoryGit) => row.branches.filter((branch) => BROKEN.has(branch.state)).length
+const unlinkedOf = (row: RepositoryGit) =>
+	row.branches.filter((branch) => R.isIncludedIn(branch.state, ['orphaned', 'unlinked'])).length
 
-export const describe = (branch: RepositoryGit['branches'][number]) =>
-	[
-		branch.name,
-		`+${branch.unique} unique`,
-		ago(branch.at),
-		branch.state,
-		branch.mirror ? `on ${branch.mirror}` : '',
-		branch.worktree ? `worktree ${branch.worktree}` : '',
-	]
-		.filter(Boolean)
-		.join('  ')
+type Worktree = RepositoryGit['worktrees'][number]
 
-export type Column = { key: string; show: (row: RepositoryGit) => string; sort: (row: RepositoryGit) => number }
+/** under ~/Git the relative path names it (`ui-lens`, `ui-worktrees/lint-config`); elsewhere the absolute path */
+const worktreeName = (worktree: Worktree) => {
+	const path = relative(realpathSync(GIT), worktree.path)
+	return path.startsWith('..') ? worktree.path : path
+}
 
-export const COLUMNS: readonly Column[] = [
-	{ key: 'status', show: statusOf, sort: (row) => STATUSES.indexOf(statusOf(row)) },
-	{ key: 'files', show: (row) => digit(row.files), sort: (row) => row.files },
-	{ key: 'unpushed', show: unpushedOf, sort: (row) => row.ahead },
-	{ key: 'branches', show: (row) => digit(row.branches.length), sort: (row) => row.branches.length },
-	{ key: 'unlinked', show: (row) => digit(unlinkedOf(row)), sort: unlinkedOf },
-	{ key: 'renovate', show: (row) => digit(row.renovate), sort: (row) => row.renovate },
-	{ key: 'stash', show: (row) => digit(row.stash), sort: (row) => row.stash },
-	{ key: 'committed', show: (row) => ago(row.committed), sort: (row) => row.committed },
-	{ key: 'fetched', show: (row) => ago(row.fetched), sort: (row) => row.fetched },
+/** a child row fills the repo row's columns: status, dirty files and unpushed commits are its own, the rest are the repo's */
+const worktreeStatus = (worktree: Worktree): Status =>
+	worktree.files ? 'dirty' : worktree.ahead ? 'unpushed' : 'clean'
+
+const TONES: Record<Status, string> = {
+	error: 'badge-error',
+	gone: 'badge-error',
+	detached: 'badge-error',
+	new: 'badge-accent',
+	unlinked: 'badge-error',
+	unpushed: 'badge-warning',
+	dirty: 'badge-info',
+	'never-fetched': 'badge-warning',
+	stale: 'badge-warning',
+	clean: 'badge-success',
+}
+
+const statusView = (status: Status): View => ({ text: status, tone: TONES[status], badge: true })
+
+/** the lines behind a column's count, for the dialog and the text report */
+const detail = (row: RepositoryGit, texts: readonly string[], button?: string): View['detail'] =>
+	texts.length ? { title: row.repo, lines: texts.map((text) => ({ text, tone: 'bg-base-200' })), button } : undefined
+
+/** `child` fills a linked worktree's row; a column without one is the repo's alone */
+type GitColumn = Column<RepositoryGit> & { child?: (worktree: Worktree) => View }
+
+const COLUMNS: readonly GitColumn[] = [
+	{
+		key: 'status',
+		view: (row) => ({ ...statusView(statusOf(row)), detail: detail(row, row.errors, 'btn-error') }),
+		sort: statusRank,
+		child: (worktree) => statusView(worktreeStatus(worktree)),
+	},
+	{
+		key: 'files',
+		view: (row) => ({ text: digit(row.files) }),
+		sort: (row) => row.files,
+		child: (worktree) => ({ text: digit(worktree.files) }),
+	},
+	{
+		key: 'worktrees',
+		view: (row) => ({
+			text: digit(dirtyOf(row) - row.files),
+			detail: detail(
+				row,
+				row.worktrees.map((worktree) => `${worktree.path}  ${worktree.branch}  ${worktree.files} dirty`),
+			),
+		}),
+		sort: (row) => dirtyOf(row) - row.files,
+	},
+	{
+		key: 'unpushed',
+		view: (row) => ({ text: unpushedOf(row) }),
+		sort: (row) => row.ahead,
+		child: (worktree) => ({ text: digit(worktree.ahead) }),
+	},
+	{
+		key: 'branches',
+		view: (row) => ({
+			text: digit(row.branches.length),
+			detail: detail(
+				row,
+				row.branches.map((branch) =>
+					[
+						branch.name,
+						`+${branch.unique} unique`,
+						ago(branch.at),
+						branch.ahead ? `${branch.ahead} unpushed` : '',
+						branch.state,
+						branch.mirror ? `on ${branch.mirror}` : '',
+						branch.worktree ? `worktree ${branch.worktree}` : '',
+					]
+						.filter(Boolean)
+						.join('  '),
+				),
+			),
+		}),
+		sort: (row) => row.branches.length,
+	},
+	{ key: 'unlinked', view: (row) => ({ text: digit(unlinkedOf(row)) }), sort: unlinkedOf },
+	{ key: 'renovate', view: (row) => ({ text: digit(row.renovate) }), sort: (row) => row.renovate },
+	{ key: 'stash', view: (row) => ({ text: digit(row.stash) }), sort: (row) => row.stash },
+	{ key: 'committed', view: (row) => ({ text: ago(row.committed) }), sort: (row) => row.committed },
+	{ key: 'fetched', view: (row) => ({ text: row.fetched ? ago(row.fetched) : 'never' }), sort: (row) => row.fetched },
 ]
 
-export const totals = (rows: RepositoryGit[]) => ({
+export const GIT_TABLE: Table<RepositoryGit> = {
+	id: 'git',
+	columns: COLUMNS,
+	name: (row) => row.repo,
+	children: (row) =>
+		row.worktrees.map((worktree) => ({
+			name: worktreeName(worktree),
+			branch: worktree.branch,
+			views: COLUMNS.map((column) => column.child?.(worktree) ?? { text: '·' }),
+		})),
+}
+
+export const totals = (rows: readonly RepositoryGit[]) => ({
 	unpushed: R.sumBy(rows, (row) => row.ahead),
 	unlinked: R.sumBy(rows, unlinkedOf),
 	clean: rows.filter((row) => statusOf(row) === 'clean').length,
 })
 
-export const byStatus = (rows: RepositoryGit[]) =>
-	rows.toSorted((a, b) => STATUSES.indexOf(statusOf(a)) - STATUSES.indexOf(statusOf(b)) || a.repo.localeCompare(b.repo))
+export const byStatus = (rows: readonly RepositoryGit[]) => R.sortBy(rows, statusRank, (row) => row.repo)
 
-export const formatGit = (rows: RepositoryGit[]) => {
-	const headers = ['', ...COLUMNS.map((column) => column.key)]
-	const cells = byStatus(rows).map((row) => [row.repo, ...COLUMNS.map((column) => column.show(row))])
-	const widths = headers.map((header, index) =>
-		Math.max(header.length, ...cells.map((cell) => (cell[index] ?? '').length)),
-	)
-	const line = (cell: readonly string[]) => cell.map((value, index) => value.padEnd(widths[index] ?? 0)).join('  ')
-	const details = rows.flatMap((row) =>
-		row.branches.length ? [`\n${row.repo}`, ...row.branches.map((branch) => `  ${describe(branch)}`)] : [],
-	)
+export const formatGit = (rows: readonly RepositoryGit[]) => {
 	const { unpushed, unlinked, clean } = totals(rows)
 	return [
-		line(headers),
-		...cells.map(line),
+		...formatTable(GIT_TABLE, byStatus(rows)),
 		`\n${unpushed} commits unpushed · ${unlinked} branches need linking · ${clean}/${rows.length} clean`,
-		...details,
+		...rows.flatMap((row) =>
+			block(
+				row.repo,
+				detailsOf(GIT_TABLE, row).flatMap((d) => d.lines),
+			),
+		),
 	].join('\n')
 }
