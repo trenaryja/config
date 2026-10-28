@@ -1,7 +1,7 @@
 {
 	"name": "@trenaryja/config",
 	"version": "0.2.2",
-	"description": "Shared configs: eslint, tsconfig, prettier, renovate, release-it",
+	"description": "Shared eslint, prettier, tsconfig, Renovate and release-it config for Bun repos, plus a tren CLI",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/trenaryja/config.git"
