@@ -13,7 +13,7 @@ import { redundant } from './redundant.ts'
 
 const CACHE = Bun.env.FLEET_LINT_CACHE ?? '/tmp/eslint-fleet-lint.json'
 const DIRECTIVE = '<directive>'
-const LINT_PATH = 'eslint.js (working copy)'
+const LINT_PATH = 'eslint/index.js (working copy)'
 
 /** type-aware lint holds the whole program (measured 2026-10-18: one trivial ui file ~1.3 GB, one googleapis file ~3.2 GB); four repos in parallel took the machine past 10 GB */
 const CAP_KB = {
@@ -84,7 +84,7 @@ type Batch = { cwd: string; files: readonly string[]; working: boolean; flags: r
 const runEslint = async ({ cwd, files, working, flags }: Batch, capKb: number) => {
 	const eslintPath = findUp(cwd, 'node_modules/.bin/eslint')
 	if (!eslintPath) throw new Error(`${cwd}: no node_modules/.bin/eslint at or above it; run bun install there`)
-	/** consumers install from npm -> `working` swaps in this repo's eslint.js; node, as consumers' eslint shebang runs: bun peaks 2.8GB where node peaks 1.6GB (health/apps/web) */
+	/** consumers install from npm -> `working` swaps in this repo's eslint config; node, as consumers' eslint shebang runs: bun peaks 2.8GB where node peaks 1.6GB (health/apps/web) */
 	const swap = working ? ['--import', `${import.meta.dir}/swap-eslint.ts`] : []
 	const proc = Bun.spawn(['node', ...swap, eslintPath, '--format', 'json', '--no-warn-ignored', ...flags, ...files], {
 		cwd,
@@ -203,8 +203,8 @@ export const scannedAt = () => (cache().size ? new Date(cache().lastModified) : 
 /** a rule switched on since the scan reads as 0 hits, not as unscanned */
 const freshScans = async () => {
 	const scans = await loadScans()
-	if (Bun.file(`${import.meta.dir}/../eslint.js`).lastModified > cache().lastModified)
-		throw new Error(`stale: ${CACHE} predates eslint.js; run bun fleet lint scan`)
+	if (Bun.file(`${import.meta.dir}/../eslint/index.js`).lastModified > cache().lastModified)
+		throw new Error(`stale: ${CACHE} predates eslint/index.js; run bun fleet lint scan`)
 	return scans
 }
 

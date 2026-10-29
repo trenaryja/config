@@ -1,7 +1,7 @@
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import * as R from 'remeda'
-import { GENERATED_GLOBS } from '../lib/generated-globs.js'
+import { GENERATED_GLOBS } from '../eslint/generated-globs.js'
 import { columnLines } from './columns.ts'
 import { gitRoot, readText, trackedFiles } from './repo.ts'
 import { defineCommand, jsonFlag, MISUSE } from './run.ts'

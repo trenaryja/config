@@ -14,9 +14,9 @@ import { dirname, join } from 'node:path'
 import ts from 'typescript'
 import tseslint from 'typescript-eslint'
 
-import { GENERATED_GLOBS } from './lib/generated-globs.js'
-/** @import { Rules } from './eslint.js' */
-/** @import { Override } from './eslint.d.ts' */
+import { GENERATED_GLOBS } from './generated-globs.js'
+/** @import { Rules } from './index.js' */
+/** @import { Override } from './index.d.ts' */
 /** @template {string} Prefix @typedef {keyof Rules extends infer Id ? Id extends `${Prefix}${infer Name}` ? Name : never : never} Unprefixed */
 /** @template {string} Prefix @typedef {readonly (readonly Unprefixed<Prefix>[])[]} RuleLines */
 

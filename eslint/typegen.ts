@@ -1,7 +1,7 @@
 import next from '@next/eslint-plugin-next'
 import { flatConfigsToPlugins, pluginsToRulesDTS } from 'eslint-typegen/core'
 import { writeFileSync } from 'node:fs'
-import { defineConfig } from './eslint.js'
+import { defineConfig } from './index.js'
 
 /**
  * eslint-typegen's own `typegen()` is skipped for two of its bugs (2.3.1):
@@ -18,6 +18,6 @@ const types = await pluginsToRulesDTS(plugins, {
 })
 const seen = new Set()
 writeFileSync(
-	'eslint-rules.gen.d.ts',
+	`${import.meta.dir}/rules.gen.d.ts`,
 	types.replaceAll(/^interface \w+ \{\n[\s\S]*?^\}\n/gm, (block) => (seen.size < seen.add(block).size ? block : '')),
 )

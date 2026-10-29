@@ -10,37 +10,30 @@
 	"author": "Justin Trenary",
 	"type": "module",
 	"exports": {
-		"./eslint": {
-			"types": "./eslint.d.ts",
-			"default": "./eslint.js"
-		},
+		"./eslint": "./eslint/index.js",
 		"./prettier": "./prettier.json",
 		"./release-it": "./release-it/base.json",
 		"./release-it/*": "./release-it/*.json",
-		"./tsconfig/*": "./tsconfig/*.json",
-		"./package.json": "./package.json"
+		"./tsconfig/*": "./tsconfig/*.json"
 	},
 	"bin": {
 		"tren": "./tren/index.ts"
 	},
 	"files": [
-		"eslint.js",
-		"eslint.d.ts",
-		"eslint-rules.gen.d.ts",
-		"lib",
+		"eslint",
+		"!eslint/typegen.ts",
 		"prettier.json",
 		"release-it",
 		"renovate",
 		"tsconfig",
-		"tren",
-		"!tren/**/node_modules"
+		"tren"
 	],
 	"scripts": {
 		"chk": "bun tren/index.ts chk && bun fleet lint redundant",
 		"ci": "bun tren/index.ts ci",
 		"dev": "bun fleet --serve",
-		"fix": "bun typegen.ts && bun tren/index.ts fix",
-		"prepare": "bun typegen.ts",
+		"fix": "bun eslint/typegen.ts && bun tren/index.ts fix",
+		"prepare": "bun eslint/typegen.ts",
 		"release": "GITHUB_TOKEN=$(gh auth token) release-it"
 	},
 	"prettier": "@trenaryja/config/prettier",
@@ -82,10 +75,6 @@
 		"release-it": {
 			"optional": true
 		}
-	},
-	"publishConfig": {
-		"access": "public",
-		"provenance": true
 	},
 	"release-it": {
 		"extends": "./release-it/base.json"

@@ -2,7 +2,7 @@ import { ESLint, type Linter } from 'eslint'
 import { builtinRules } from 'eslint/use-at-your-own-risk'
 import * as R from 'remeda'
 import { z } from 'zod'
-import { defineConfig } from '../eslint.js'
+import { defineConfig } from '../eslint/index.js'
 import { jsonObject } from '../tren/repo.ts'
 
 const PROBES = ['src/a.ts', 'src/a.tsx', 'src/a.js', 'proxy.ts']
@@ -28,7 +28,7 @@ const resolve = async (config: Linter.Config[], file: string) =>
 
 export const redundant = async () => {
 	const full = defineConfig()
-	/** every preset carries a `name` or `plugins`; eslint.js's own rule blocks neither */
+	/** every preset carries a `name` or `plugins`; eslint/index.js's own rule blocks neither */
 	const ours = full.filter((block) => block.rules && !block.name && !block.plugins)
 	const plugins: Record<string, ESLint.Plugin> = R.mergeAll(full.map((block) => block.plugins ?? {}))
 	const defaults = (ruleId: string) => {

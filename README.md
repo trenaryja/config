@@ -12,7 +12,7 @@ It ships eslint + plugins, prettier + plugins, typescript and `@types/bun`. Don'
 
 - eslint, prettier and their plugins are pinned exactly, so lint and format results move mostly with this package's releases; the plugins' own `^` dependencies (axe-core, refa, @babel) can still shift them. `typescript` and `@types/bun` pick up new minors on their own.
 - Not included: `react` + `@types/react`. Their majors move together, so each repo keeps both.
-- Workspace repos need `linker = "hoisted"` under `[install]` in the root `bunfig.toml`, because Bun's isolated linker hoists nothing.
+- Workspace repos need `linker = "hoisted"` under `[install]` in the root `bunfig.toml`, because Next looks for `typescript` inside each app, where Bun's isolated linker doesn't put it. `tren fix` adds it.
 
 ## Scripts
 
@@ -43,7 +43,7 @@ jobs:
 
 ## eslint
 
-Each plugin's own preset, plus named changes in `eslint.js`. `eslint.config.mjs`:
+Each plugin's own preset, plus named changes in `eslint/index.js`. `eslint.config.mjs`:
 
 ```js
 import { defineConfig } from '@trenaryja/config/eslint'

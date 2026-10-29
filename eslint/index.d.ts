@@ -1,6 +1,6 @@
 import type { ESLint, Linter } from 'eslint'
 import type { ESLintRules } from 'eslint/rules'
-import type { RuleOptions } from './eslint-rules.gen.js'
+import type { RuleOptions } from './rules.gen.js'
 
 /** every rule this package ships, options included: ESLint's own core types, minus the index signature that would let a typo through, plus the generated plugin types */
 export type Rules = RuleOptions & {
