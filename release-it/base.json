@@ -1,4 +1,5 @@
 {
+	"hooks": { "before:init": "bun run ci" },
 	"git": {
 		"commitMessage": "chore(release): v${version} [skip ci]"
 	},

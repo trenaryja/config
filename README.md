@@ -96,3 +96,5 @@ Only if you publish: `bun add -d release-it @release-it/conventional-changelog`.
 ```json
 { "release-it": { "extends": "@trenaryja/config/release-it" } }
 ```
+
+A release runs `bun run ci` first, then bumps, tags and opens a GitHub release. It never publishes: publish from CI.
